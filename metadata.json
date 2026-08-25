@@ -1,0 +1,6 @@
+{
+  "name": "LifeBuddy",
+  "description": "Smart AI-Based Alert System and student companion featuring real-time academic data monitoring, attendance debarment detection, predictive ML risk engine, AI Alert Simulator sandbox, 'What Should I Do Now?' action center, multi-channel notifications, and exam countdowns.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
