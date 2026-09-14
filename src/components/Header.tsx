@@ -88,8 +88,13 @@ export const Header: React.FC<HeaderProps> = ({
         {/* Logo, App Title & Personalized Hello */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-purple-700 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-purple-500/20 ring-2 ring-purple-300/40 flex-shrink-0">
-              <span className="text-xl">✨</span>
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-purple-600 via-purple-700 to-indigo-700 flex items-center justify-center text-white shadow-md shadow-purple-500/20 ring-2 ring-purple-300/40 flex-shrink-0 overflow-hidden">
+              <img
+                src="/app-logo.jpg"
+                alt="LifeBuddy Logo"
+                className="w-full h-full object-cover rounded-2xl"
+                referrerPolicy="no-referrer"
+              />
             </div>
             <div>
               <div className="flex items-center gap-2 flex-wrap">
