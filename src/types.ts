@@ -430,11 +430,11 @@ export interface InstitutionAttendanceConfig {
 // UNIFIED HISTORY PAGE RECORD TYPES
 // ==========================================
 
-export type HistoryCategory = 'All' | 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments';
+export type HistoryCategory = 'All' | 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities';
 
 export interface HistoryRecordItem {
   id: string;
-  category: 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments';
+  category: 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities';
   title: string;
   date: string;
   status: string;
@@ -442,6 +442,69 @@ export interface HistoryRecordItem {
   badge?: string;
   colorTheme?: string;
   timestamp: number;
+}
+
+// ==========================================
+// BOTTOM OPTIONS MENU TYPES (CUSTOMIZABLE)
+// ==========================================
+
+export type BottomOptionAction = 
+  | 'timer' 
+  | 'stretch' 
+  | 'schedule' 
+  | 'exams' 
+  | 'alerts' 
+  | 'holidays' 
+  | 'history' 
+  | 'birthday' 
+  | 'attendance' 
+  | 'habits' 
+  | 'complaints' 
+  | 'custom-link' 
+  | 'custom-note';
+
+export interface BottomOptionItem {
+  id: string;
+  label: string;
+  icon: string;
+  actionType: BottomOptionAction;
+  targetUrl?: string;
+  customNote?: string;
+  colorTheme?: 'purple' | 'indigo' | 'fuchsia' | 'emerald' | 'amber' | 'rose' | 'sky';
+  isDefault?: boolean;
+}
+
+// ==========================================
+// PHYSICAL ACTIVITY REMINDERS (RECURRING)
+// ==========================================
+
+export type PhysicalActivityType = 'stretch' | 'walking' | 'water' | 'eye-rest' | 'posture' | 'custom';
+
+export interface PhysicalActivityReminder {
+  id: string;
+  title: string;
+  type: PhysicalActivityType;
+  icon: string;
+  intervalMinutes: number; // default: 60 mins (1 hour)
+  enabled: boolean;
+  lastTriggeredAt?: number;
+  nextTriggerAt: number; // timestamp in ms
+  customMessage?: string;
+  dailyCompletedCount: number;
+  isDefault?: boolean;
+}
+
+// ==========================================
+// CLASS SCHEDULE TOMORROW CONFIRMATION
+// ==========================================
+
+export interface TomorrowConfirmationRecord {
+  dateStr: string; // YYYY-MM-DD for tomorrow
+  dayOfWeek: DayOfWeek;
+  confirmedAt: number;
+  activePeriodIds: string[];
+  skippedPeriodIds: string[];
+  notes?: string;
 }
 
 

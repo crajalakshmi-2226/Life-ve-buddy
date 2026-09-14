@@ -16,6 +16,7 @@ import { HabitsSection } from './components/HabitsSection';
 import { ComplaintsBox } from './components/ComplaintsBox';
 import { FocusTimerModal } from './components/FocusTimerModal';
 import { BodyStretchRelief } from './components/BodyStretchRelief';
+import { BottomOptionsMenu } from './components/BottomOptionsMenu';
 import { AndroidFrame } from './components/AndroidFrame';
 import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystemContainer';
 import { BirthdayModal } from './components/BirthdayModal';
@@ -70,6 +71,9 @@ export default function App() {
   const examSectionRef = useRef<HTMLDivElement>(null);
   const holidaySectionRef = useRef<HTMLDivElement>(null);
   const aiAlertSectionRef = useRef<HTMLDivElement>(null);
+  const attendanceSectionRef = useRef<HTMLDivElement>(null);
+  const habitsSectionRef = useRef<HTMLDivElement>(null);
+  const complaintsSectionRef = useRef<HTMLDivElement>(null);
 
   // State Initialization
   const [quote, setQuote] = useState<DailyQuote>({
@@ -346,6 +350,30 @@ export default function App() {
     }
   };
 
+  // Smooth scroll to Attendance section
+  const scrollToAttendance = () => {
+    setActiveTab('dashboard');
+    setTimeout(() => {
+      attendanceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  // Smooth scroll to Habits section
+  const scrollToHabits = () => {
+    setActiveTab('dashboard');
+    setTimeout(() => {
+      habitsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
+  // Smooth scroll to Complaints section
+  const scrollToComplaints = () => {
+    setActiveTab('dashboard');
+    setTimeout(() => {
+      complaintsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }, 50);
+  };
+
   // Sync Student Profile changes with AI Risk Engine & Local Storage
   const handleUpdateStudentProfile = (partial: Partial<StudentAcademicProfile>) => {
     setStudentProfile(prev => {
@@ -590,7 +618,7 @@ export default function App() {
 
   return (
     <AndroidFrame isAndroidView={isAndroidView}>
-      <div className="min-h-screen bg-[#faf5ff] text-slate-900 pb-16">
+      <div className="min-h-screen bg-[#faf5ff] text-slate-900 pb-28 sm:pb-32">
         {/* Floating Header */}
         <Header
           userName={todayData.userName || 'Alex'}
@@ -717,19 +745,21 @@ export default function App() {
               />
 
               {/* SECTION 2: Institutional Attendance Tracker (Days Can Change By User & Daily Prompt) */}
-              <InstitutionAttendanceTracker
-                config={attendanceConfig}
-                onUpdateConfig={(newCfg) => {
-                  setAttendanceConfig(newCfg);
-                  handleUpdateStudentProfile({ 
-                    overallAttendance: newCfg.attendancePercentage,
-                    semesterWorkingDays: newCfg.totalWorkingDays
-                  });
-                }}
-                soundEnabled={soundEnabled}
-                onToast={showToast}
-                onLogHistoryRecord={logHistoryRecord}
-              />
+              <div ref={attendanceSectionRef}>
+                <InstitutionAttendanceTracker
+                  config={attendanceConfig}
+                  onUpdateConfig={(newCfg) => {
+                    setAttendanceConfig(newCfg);
+                    handleUpdateStudentProfile({ 
+                      overallAttendance: newCfg.attendancePercentage,
+                      semesterWorkingDays: newCfg.totalWorkingDays
+                    });
+                  }}
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                  onLogHistoryRecord={logHistoryRecord}
+                />
+              </div>
 
               {/* SECTION 3: AI-BASED ALERT SYSTEM (Continuous Data Monitoring, Risk Detection & Simulator) */}
               <div ref={aiAlertSectionRef}>
@@ -805,20 +835,24 @@ export default function App() {
               </section>
 
               {/* SECTION 7: Daily Habits & Streaks (with 7-day Recharts Line Chart) */}
-              <HabitsSection
-                habits={habits}
-                onToggleHabit={handleToggleHabit}
-                onAddHabit={handleAddHabit}
-                onDeleteHabit={handleDeleteHabit}
-                soundEnabled={soundEnabled}
-                onOpenStretchRelief={() => setIsStretchOpen(true)}
-              />
+              <div ref={habitsSectionRef}>
+                <HabitsSection
+                  habits={habits}
+                  onToggleHabit={handleToggleHabit}
+                  onAddHabit={handleAddHabit}
+                  onDeleteHabit={handleDeleteHabit}
+                  soundEnabled={soundEnabled}
+                  onOpenStretchRelief={() => setIsStretchOpen(true)}
+                />
+              </div>
 
               {/* SECTION 8: Complaints & Issues Box (Private / Owner-Only Access) */}
-              <ComplaintsBox
-                soundEnabled={soundEnabled}
-                onToast={showToast}
-              />
+              <div ref={complaintsSectionRef}>
+                <ComplaintsBox
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                />
+              </div>
             </>
           )}
 
@@ -851,6 +885,8 @@ export default function App() {
           isOpen={isStretchOpen}
           onClose={() => setIsStretchOpen(false)}
           soundEnabled={soundEnabled}
+          onToast={showToast}
+          onLogHistory={logHistoryRecord}
         />
 
         {/* Birthday Celebrations & Reminder Modal */}
@@ -863,6 +899,23 @@ export default function App() {
             setBirthdayData(newBday);
             logHistoryRecord(`Birthday Reminder Configured: ${newBday.birthdayDate}`, 'Habits', 'Configured', `Remind advance: ${newBday.reminderTiming.value} ${newBday.reminderTiming.unit}`);
           }}
+          soundEnabled={soundEnabled}
+          onToast={showToast}
+        />
+
+        {/* Bottom Options Menu (Customizable Dock with Add/Delete custom items) */}
+        <BottomOptionsMenu
+          onOpenTimer={() => setIsTimerOpen(true)}
+          onOpenStretch={() => setIsStretchOpen(true)}
+          onOpenSchedule={scrollToSchedule}
+          onOpenExams={scrollToExams}
+          onOpenAlerts={scrollToAlerts}
+          onOpenHolidays={() => setActiveTab('holidays')}
+          onOpenHistory={() => setActiveTab('history')}
+          onOpenBirthday={() => setIsBirthdayModalOpen(true)}
+          onOpenAttendance={scrollToAttendance}
+          onOpenHabits={scrollToHabits}
+          onOpenComplaints={scrollToComplaints}
           soundEnabled={soundEnabled}
           onToast={showToast}
         />

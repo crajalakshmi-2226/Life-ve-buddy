@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   BookOpen, 
   Clock, 
@@ -17,9 +17,16 @@ import {
   SlidersHorizontal,
   Bell,
   X,
-  FileText
+  FileText,
+  Upload,
+  Download,
+  Moon,
+  Sun,
+  Check,
+  AlertCircle,
+  FileSpreadsheet
 } from 'lucide-react';
-import { ClassPeriod, DayOfWeek } from '../types';
+import { ClassPeriod, DayOfWeek, TomorrowConfirmationRecord } from '../types';
 import { 
   DAYS_OF_WEEK, 
   getTodayDayOfWeek, 
@@ -107,8 +114,40 @@ export const DEFAULT_CLASS_PERIODS: ClassPeriod[] = [
     notes: 'Lab safety coat mandatory',
     attendedToday: false,
     reminderMinutesBefore: 10
+  },
+  {
+    id: 'p5',
+    periodNumber: 'Period 1',
+    subject: 'Database Management Systems',
+    code: 'CS 320',
+    days: ['Saturday'],
+    startTime: '09:30',
+    endTime: '11:00',
+    room: 'Hall C - Room 301',
+    instructor: 'Dr. Sarah Patel',
+    colorTheme: 'amber',
+    notes: 'SQL normalization review and practical test',
+    attendedToday: false,
+    reminderMinutesBefore: 10
   }
 ];
+
+// Presets for 1-click loading
+const PRESET_SCHEDULES = {
+  cs_5day: [
+    { id: 'cs1', periodNumber: 'Period 1', subject: 'Operating Systems', code: 'CS 350', days: ['Monday', 'Wednesday', 'Friday'] as DayOfWeek[], startTime: '09:00', endTime: '10:15', room: 'Hall A 101', instructor: 'Dr. Lin', colorTheme: 'purple' as const, reminderMinutesBefore: 10 },
+    { id: 'cs2', periodNumber: 'Period 2', subject: 'Algorithms Design', code: 'CS 355', days: ['Monday', 'Wednesday', 'Friday'] as DayOfWeek[], startTime: '10:30', endTime: '11:45', room: 'Hall B 202', instructor: 'Prof. Vance', colorTheme: 'indigo' as const, reminderMinutesBefore: 10 },
+    { id: 'cs3', periodNumber: 'Period 3', subject: 'Web Systems & API', code: 'CS 380', days: ['Tuesday', 'Thursday'] as DayOfWeek[], startTime: '13:00', endTime: '14:30', room: 'Computer Lab 2', instructor: 'Prof. Gomez', colorTheme: 'emerald' as const, reminderMinutesBefore: 10 },
+    { id: 'cs4', periodNumber: 'Period 4', subject: 'Cybersecurity Principles', code: 'CS 390', days: ['Tuesday', 'Thursday'] as DayOfWeek[], startTime: '15:00', endTime: '16:30', room: 'Auditorium 1', instructor: 'Dr. Becker', colorTheme: 'rose' as const, reminderMinutesBefore: 10 }
+  ],
+  college_6day: [
+    { id: 'c1', periodNumber: 'Period 1', subject: 'Calculus III', code: 'MATH 301', days: ['Monday', 'Wednesday', 'Friday'] as DayOfWeek[], startTime: '08:30', endTime: '09:45', room: 'Math Rm 12', instructor: 'Prof. Davis', colorTheme: 'purple' as const, reminderMinutesBefore: 10 },
+    { id: 'c2', periodNumber: 'Period 2', subject: 'Modern Physics', code: 'PHYS 201', days: ['Monday', 'Wednesday', 'Friday'] as DayOfWeek[], startTime: '10:00', endTime: '11:15', room: 'Science Ctr', instructor: 'Dr. Klein', colorTheme: 'indigo' as const, reminderMinutesBefore: 10 },
+    { id: 'c3', periodNumber: 'Period 3', subject: 'Organic Chemistry', code: 'CHEM 210', days: ['Tuesday', 'Thursday'] as DayOfWeek[], startTime: '09:00', endTime: '10:30', room: 'Chem Lab B', instructor: 'Dr. Adams', colorTheme: 'amber' as const, reminderMinutesBefore: 10 },
+    { id: 'c4', periodNumber: 'Period 4', subject: 'Technical Writing', code: 'ENG 205', days: ['Tuesday', 'Thursday'] as DayOfWeek[], startTime: '11:00', endTime: '12:30', room: 'Humanities 3', instructor: 'Prof. Miller', colorTheme: 'sky' as const, reminderMinutesBefore: 10 },
+    { id: 'c5', periodNumber: 'Period 1', subject: 'Engineering Seminar & Viva', code: 'ENGR 400', days: ['Saturday'] as DayOfWeek[], startTime: '09:00', endTime: '12:00', room: 'Conference Hall', instructor: 'Dept Dean', colorTheme: 'rose' as const, reminderMinutesBefore: 15 }
+  ]
+};
 
 export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
   periods,
@@ -117,32 +156,116 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
   onToast
 }) => {
   const todayDay = getTodayDayOfWeek();
+
+  // 5-Day vs 6-Day setting
+  const [workDaysMode, setWorkDaysMode] = useState<5 | 6>(() => {
+    const saved = localStorage.getItem('class_schedule_workdays');
+    return saved === '5' ? 5 : 6;
+  });
+
+  const activeDaysList: DayOfWeek[] = workDaysMode === 5
+    ? ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+    : ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
   const [selectedDay, setSelectedDay] = useState<DayOfWeek | 'ALL'>(todayDay);
+  const [viewMode, setViewMode] = useState<'weekly_timetable' | 'daily_cards'>('weekly_timetable');
+
+  // Modal Form State (Add / Edit period)
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editingPeriodId, setEditingPeriodId] = useState<string | null>(null);
-
-  // Modal Form State
   const [formPeriodNumber, setFormPeriodNumber] = useState('Period 1');
   const [formSubject, setFormSubject] = useState('');
   const [formCode, setFormCode] = useState('');
   const [formDays, setFormDays] = useState<DayOfWeek[]>([todayDay]);
   const [formStartTime, setFormStartTime] = useState('09:00');
-  const [formEndTime, setFormEndTime] = useState('10:00');
+  const [formEndTime, setFormEndTime] = useState('10:15');
   const [formRoom, setFormRoom] = useState('');
   const [formInstructor, setFormInstructor] = useState('');
   const [formColor, setFormColor] = useState<ClassPeriod['colorTheme']>('purple');
   const [formNotes, setFormNotes] = useState('');
   const [formReminder, setFormReminder] = useState<number>(10);
 
+  // Upload / Import Timetable Modal State
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadTab, setUploadTab] = useState<'file' | 'paste' | 'templates'>('file');
+  const [pasteContent, setPasteContent] = useState('');
+  const [fileError, setFileError] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Evening Next-Day Confirmation State
+  const [isEveningConfirmationOpen, setIsEveningConfirmationOpen] = useState(false);
+  const [tomorrowReminderMap, setTomorrowReminderMap] = useState<{ [id: string]: boolean }>({});
+  const [tomorrowCustomPeriods, setTomorrowCustomPeriods] = useState<ClassPeriod[]>([]);
+  const [isAddPeriodForTomorrowOpen, setIsAddPeriodForTomorrowOpen] = useState(false);
+  const [newTomorrowSubject, setNewTomorrowSubject] = useState('');
+  const [newTomorrowTime, setNewTomorrowTime] = useState('09:00');
+  const [newTomorrowEndTime, setNewTomorrowEndTime] = useState('10:15');
+  const [newTomorrowRoom, setNewTomorrowRoom] = useState('');
+
+  // Calculate Tomorrow's Day
+  const getTomorrowDay = (): DayOfWeek => {
+    const map: { [k in DayOfWeek]: DayOfWeek } = {
+      Monday: 'Tuesday',
+      Tuesday: 'Wednesday',
+      Wednesday: 'Thursday',
+      Thursday: 'Friday',
+      Friday: workDaysMode === 5 ? 'Monday' : 'Saturday',
+      Saturday: 'Monday',
+      Sunday: 'Monday'
+    };
+    return map[todayDay] || 'Monday';
+  };
+
+  const tomorrowDay = getTomorrowDay();
+
+  // Calculate Tomorrow's Date String
+  const getTomorrowDateStr = (): string => {
+    const d = new Date();
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().split('T')[0];
+  };
+
+  const tomorrowDateStr = getTomorrowDateStr();
+
+  // Check if current time is evening (5 PM / 17:00 or later)
+  const isEvening = new Date().getHours() >= 17;
+
+  // Check if confirmation already completed for tomorrow
+  const confirmationStorageKey = `schedule_tomorrow_confirmed_${tomorrowDateStr}`;
+  const [isTomorrowConfirmed, setIsTomorrowConfirmed] = useState<boolean>(() => {
+    return localStorage.getItem(confirmationStorageKey) === 'true';
+  });
+
+  // Periods scheduled for tomorrow
+  const tomorrowBasePeriods = periods.filter(p => p.days.includes(tomorrowDay));
+  const tomorrowAllPeriods = [...tomorrowBasePeriods, ...tomorrowCustomPeriods];
+
+  // Initialize reminder map for tomorrow's periods
+  useEffect(() => {
+    const initialMap: { [id: string]: boolean } = {};
+    tomorrowAllPeriods.forEach(p => {
+      initialMap[p.id] = tomorrowReminderMap[p.id] !== undefined ? tomorrowReminderMap[p.id] : true;
+    });
+    setTomorrowReminderMap(initialMap);
+  }, [tomorrowBasePeriods.length, tomorrowCustomPeriods.length]);
+
+  const handleToggleWorkDaysMode = (days: 5 | 6) => {
+    setWorkDaysMode(days);
+    localStorage.setItem('class_schedule_workdays', days.toString());
+    if (soundEnabled) playSuccessChime();
+    onToast(`Timetable Updated`, `Switched to ${days}-Day academic week (${days === 5 ? 'Mon–Fri' : 'Mon–Sat'}).`, 'info');
+  };
+
   const status = getCurrentClassStatus(periods);
 
   const openAddModal = (defaultDay?: DayOfWeek) => {
     setEditingPeriodId(null);
-    const countForDay = periods.filter(p => p.days.includes(defaultDay || todayDay)).length;
+    const targetDay = defaultDay || (selectedDay !== 'ALL' ? selectedDay : todayDay);
+    const countForDay = periods.filter(p => p.days.includes(targetDay)).length;
     setFormPeriodNumber(`Period ${countForDay + 1}`);
     setFormSubject('');
     setFormCode('');
-    setFormDays(defaultDay ? [defaultDay] : [todayDay]);
+    setFormDays([targetDay]);
     setFormStartTime('09:00');
     setFormEndTime('10:15');
     setFormRoom('');
@@ -181,7 +304,6 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
     }
 
     if (editingPeriodId) {
-      // Edit existing
       const updated = periods.map(p => {
         if (p.id === editingPeriodId) {
           return {
@@ -204,7 +326,6 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
       onUpdatePeriods(updated);
       onToast("Class Period Updated", `Saved changes for ${formSubject}`, "success");
     } else {
-      // Create new period
       const newPeriod: ClassPeriod = {
         id: `period_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         periodNumber: formPeriodNumber.trim() || `Period ${periods.length + 1}`,
@@ -274,36 +395,173 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
     }
   };
 
-  const [viewMode, setViewMode] = useState<'weekly_timetable' | 'daily_cards'>('weekly_timetable');
+  // Upload / Import Parsing
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-  const MON_TO_SAT: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-
-  const selectMonSat = () => {
-    setFormDays(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+    setFileError('');
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      const text = evt.target?.result as string;
+      processTimetableImport(text, file.name.endsWith('.csv') ? 'csv' : 'json');
+    };
+    reader.onerror = () => {
+      setFileError('Could not read the uploaded file.');
+    };
+    reader.readAsText(file);
   };
 
-  const selectAllWeekdays = () => {
-    setFormDays(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
+  const processTimetableImport = (text: string, format: 'json' | 'csv') => {
+    try {
+      let importedPeriods: ClassPeriod[] = [];
+
+      if (format === 'json' || text.trim().startsWith('[') || text.trim().startsWith('{')) {
+        const parsed = JSON.parse(text);
+        const list = Array.isArray(parsed) ? parsed : (parsed.periods || []);
+        if (!Array.isArray(list) || list.length === 0) {
+          setFileError('JSON file did not contain an array of class periods.');
+          return;
+        }
+
+        importedPeriods = list.map((item: any, idx: number) => ({
+          id: item.id || `imported_${Date.now()}_${idx}`,
+          periodNumber: item.periodNumber || `Period ${idx + 1}`,
+          subject: item.subject || 'Class',
+          code: item.code || '',
+          days: Array.isArray(item.days) && item.days.length > 0 ? item.days : ['Monday'],
+          startTime: item.startTime || '09:00',
+          endTime: item.endTime || '10:00',
+          room: item.room || '',
+          instructor: item.instructor || '',
+          colorTheme: item.colorTheme || 'purple',
+          notes: item.notes || '',
+          reminderMinutesBefore: item.reminderMinutesBefore || 10,
+          attendedToday: false
+        }));
+      } else {
+        // Parse CSV
+        const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+        if (lines.length <= 1) {
+          setFileError('CSV file has no data rows.');
+          return;
+        }
+
+        // Header could be: Day,Period,Subject,Code,Start,End,Room,Instructor
+        const dataLines = lines.slice(1);
+        importedPeriods = dataLines.map((line, idx) => {
+          const cols = line.split(',').map(c => c.trim().replace(/^["']|["']$/g, ''));
+          const dayVal = (cols[0] as DayOfWeek) || 'Monday';
+          const validDay = DAYS_OF_WEEK.includes(dayVal) ? dayVal : 'Monday';
+
+          return {
+            id: `csv_${Date.now()}_${idx}`,
+            periodNumber: cols[1] || `Period ${idx + 1}`,
+            subject: cols[2] || 'Lecture',
+            code: cols[3] || '',
+            days: [validDay],
+            startTime: cols[4] || '09:00',
+            endTime: cols[5] || '10:00',
+            room: cols[6] || '',
+            instructor: cols[7] || '',
+            colorTheme: 'purple',
+            reminderMinutesBefore: 10,
+            attendedToday: false
+          };
+        });
+      }
+
+      if (importedPeriods.length > 0) {
+        onUpdatePeriods(importedPeriods);
+        setIsUploadModalOpen(false);
+        setPasteContent('');
+        if (soundEnabled) playSuccessChime();
+        onToast('Timetable Imported! 📅', `Successfully loaded ${importedPeriods.length} class periods across the week.`, 'success');
+      } else {
+        setFileError('No valid class periods found in import data.');
+      }
+    } catch (err: any) {
+      setFileError(`Parse error: ${err.message || 'Invalid format'}`);
+    }
   };
 
-  const selectMWF = () => {
-    setFormDays(['Monday', 'Wednesday', 'Friday']);
+  const handleExportSchedule = () => {
+    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(periods, null, 2));
+    const downloadAnchor = document.createElement('a');
+    downloadAnchor.setAttribute("href", dataStr);
+    downloadAnchor.setAttribute("download", `LifeBuddy_Timetable_${new Date().toISOString().split('T')[0]}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    onToast('Exported Timetable', 'Downloaded your weekly schedule JSON file.', 'success');
   };
 
-  const selectTT = () => {
-    setFormDays(['Tuesday', 'Thursday']);
+  // Evening Confirmation Actions
+  const handleToggleTomorrowPeriodReminder = (periodId: string) => {
+    setTomorrowReminderMap(prev => ({
+      ...prev,
+      [periodId]: !prev[periodId]
+    }));
   };
 
-  // Filter periods based on selected tab
-  const displayedPeriods = selectedDay === 'ALL'
-    ? [...periods].sort((a, b) => a.startTime.localeCompare(b.startTime))
-    : periods.filter(p => p.days.includes(selectedDay)).sort((a, b) => a.startTime.localeCompare(b.startTime));
+  const handleDeleteTomorrowPeriod = (periodId: string) => {
+    // If it's a custom tomorrow period, remove it from custom list
+    setTomorrowCustomPeriods(prev => prev.filter(p => p.id !== periodId));
+    // If it's a base period, turn off reminder and exclude
+    setTomorrowReminderMap(prev => ({
+      ...prev,
+      [periodId]: false
+    }));
+    onToast('Period Skipped for Tomorrow', 'This class will not trigger a reminder for tomorrow.', 'info');
+  };
+
+  const handleAddPeriodForTomorrow = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTomorrowSubject.trim()) return;
+
+    const extra: ClassPeriod = {
+      id: `tomorrow_extra_${Date.now()}`,
+      periodNumber: `Special / Extra`,
+      subject: newTomorrowSubject.trim(),
+      days: [tomorrowDay],
+      startTime: newTomorrowTime,
+      endTime: newTomorrowEndTime,
+      room: newTomorrowRoom.trim() || 'Online / Extra',
+      colorTheme: 'fuchsia',
+      reminderMinutesBefore: 10,
+      attendedToday: false
+    };
+
+    setTomorrowCustomPeriods(prev => [...prev, extra]);
+    setTomorrowReminderMap(prev => ({ ...prev, [extra.id]: true }));
+    setIsAddPeriodForTomorrowOpen(false);
+    setNewTomorrowSubject('');
+    setNewTomorrowRoom('');
+    if (soundEnabled) playSuccessChime();
+    onToast('Extra Class Added for Tomorrow', `Added ${extra.subject} to tomorrow's reminder list.`, 'success');
+  };
+
+  const handleConfirmTomorrowSchedule = () => {
+    localStorage.setItem(confirmationStorageKey, 'true');
+    setIsTomorrowConfirmed(true);
+    setIsEveningConfirmationOpen(false);
+
+    if (soundEnabled) playSuccessChime();
+    try {
+      confetti({ particleCount: 50, spread: 70, origin: { y: 0.6 } });
+    } catch (e) {
+      console.debug(e);
+    }
+    const activeCount = Object.values(tomorrowReminderMap).filter(Boolean).length;
+    onToast('Reminders Confirmed! 🌙', `Scheduled ${activeCount} class reminders for tomorrow (${tomorrowDay}). Sleep well!`, 'success');
+  };
 
   const totalClassesToday = periods.filter(p => p.days.includes(todayDay)).length;
   const attendedTodayCount = periods.filter(p => p.days.includes(todayDay) && p.attendedToday).length;
 
   return (
     <section className="bg-white rounded-3xl p-5 sm:p-7 border border-purple-200/90 shadow-sm transition-all space-y-6">
+      
       {/* Section Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-purple-100 pb-4">
         <div className="flex items-center gap-3">
@@ -311,31 +569,115 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
             📅
           </div>
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <h2 className="text-lg sm:text-xl font-bold font-classic text-purple-950">
-                Class Time Periods & Schedule
+                Class Time Periods & Weekly Timetable
               </h2>
-              <span className="hidden sm:inline-flex px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
-                Custom Timetable
+              <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-purple-100 text-purple-900 border border-purple-200">
+                {workDaysMode}-Day Schedule
               </span>
             </div>
             <p className="text-xs text-purple-700/80 font-medium">
-              Configure your exact class periods, lecture times, lecture halls, and live period alerts
+              Configure your timetable for {workDaysMode === 5 ? '5 days (Mon–Fri)' : '6 days (Mon–Sat)'}, upload schedule & confirm evening reminders
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        {/* Top Header Buttons: 5/6 Days Toggle, Upload, Evening Confirmation, Add Slot */}
+        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+          
+          {/* 5-Day vs 6-Day Academic Week Switcher */}
+          <div className="flex items-center p-0.5 bg-purple-100 rounded-xl border border-purple-200 text-xs font-bold">
+            <button
+              type="button"
+              onClick={() => handleToggleWorkDaysMode(5)}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                workDaysMode === 5 ? 'bg-purple-800 text-white shadow-2xs' : 'text-purple-800 hover:bg-purple-200/60'
+              }`}
+            >
+              5-Day (Mon–Fri)
+            </button>
+            <button
+              type="button"
+              onClick={() => handleToggleWorkDaysMode(6)}
+              className={`px-2.5 py-1 rounded-lg transition-all cursor-pointer ${
+                workDaysMode === 6 ? 'bg-purple-800 text-white shadow-2xs' : 'text-purple-800 hover:bg-purple-200/60'
+              }`}
+            >
+              6-Day (Mon–Sat)
+            </button>
+          </div>
+
+          {/* Upload / Import Timetable Button */}
           <button
             type="button"
-            onClick={() => openAddModal(selectedDay !== 'ALL' ? selectedDay : todayDay)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white rounded-xl text-xs font-bold shadow-xs hover:shadow-md transition-all active:scale-95 cursor-pointer"
+            onClick={() => setIsUploadModalOpen(true)}
+            title="Upload CSV/JSON timetable or pick academic template"
+            className="flex items-center gap-1 px-3 py-1.5 bg-purple-50 hover:bg-purple-100 text-purple-900 border border-purple-200 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer"
           >
-            <Plus className="w-4 h-4" />
-            <span>Add Class Period</span>
+            <Upload className="w-3.5 h-3.5 text-purple-700" />
+            <span>Upload</span>
+          </button>
+
+          {/* Evening Tomorrow Confirmation Launcher */}
+          <button
+            type="button"
+            onClick={() => setIsEveningConfirmationOpen(true)}
+            title="Review and confirm class reminders for tomorrow"
+            className={`flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer ${
+              isEvening && !isTomorrowConfirmed
+                ? 'bg-gradient-to-r from-amber-500 to-amber-600 text-purple-950 animate-pulse font-extrabold'
+                : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-900 border border-indigo-200'
+            }`}
+          >
+            <Moon className="w-3.5 h-3.5 text-indigo-700" />
+            <span>Tomorrow's Check</span>
+            {isTomorrowConfirmed && <Check className="w-3 h-3 text-emerald-600" />}
+          </button>
+
+          {/* Add Class Period */}
+          <button
+            type="button"
+            onClick={() => openAddModal()}
+            className="flex items-center gap-1 px-3 py-1.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold shadow-2xs transition-all active:scale-95 cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Add Period</span>
           </button>
         </div>
       </div>
+
+      {/* AUTOMATIC EVENING CONFIRMATION PROMPT BANNER (If evening and not yet confirmed) */}
+      {isEvening && !isTomorrowConfirmed && (
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-indigo-900 via-purple-900 to-indigo-950 text-white border border-indigo-700 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-amber-400 text-purple-950 flex items-center justify-center font-bold text-xl flex-shrink-0 shadow-sm">
+              🌙
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-extrabold uppercase tracking-wider text-amber-300">
+                  Evening Timetable Check
+                </span>
+                <span className="text-[10px] bg-indigo-800 px-2 py-0.2 rounded-full text-indigo-200 font-mono">
+                  Tomorrow: {tomorrowDay}
+                </span>
+              </div>
+              <p className="text-xs text-purple-100 mt-0.5 leading-relaxed">
+                Tomorrow is <strong>{tomorrowDay}</strong> with <strong>{tomorrowBasePeriods.length}</strong> scheduled periods. Confirm your reminder preferences for tomorrow!
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setIsEveningConfirmationOpen(true)}
+            className="px-4 py-2 rounded-xl bg-amber-400 hover:bg-amber-300 text-purple-950 font-bold text-xs shadow-md transition-all active:scale-95 whitespace-nowrap self-end sm:self-auto cursor-pointer"
+          >
+            Review & Set Reminders ➔
+          </button>
+        </div>
+      )}
 
       {/* Real-Time Live Status Banner */}
       <div className="p-4 rounded-2xl bg-gradient-to-r from-purple-950 via-indigo-950 to-purple-900 text-white shadow-md border border-purple-800/60 relative overflow-hidden">
@@ -397,7 +739,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold uppercase tracking-wider text-purple-950">
-              Timetable Layout
+              Layout:
             </span>
             <div className="flex items-center p-0.5 bg-purple-100 rounded-xl border border-purple-200">
               <button
@@ -409,7 +751,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                     : 'text-purple-900 hover:bg-purple-200/60'
                 }`}
               >
-                📅 Weekly Timetable (Mon–Sat)
+                📅 Weekly Timetable ({workDaysMode}-Day)
               </button>
               <button
                 type="button"
@@ -425,9 +767,20 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
             </div>
           </div>
 
-          <span className="text-xs text-purple-600 font-medium">
-            {periods.length} total periods registered across Mon–Sat
-          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={handleExportSchedule}
+              className="text-xs text-purple-700 hover:text-purple-950 font-bold flex items-center gap-1 hover:underline"
+            >
+              <Download className="w-3.5 h-3.5" />
+              <span>Export Backup</span>
+            </button>
+            <span className="text-xs text-purple-500">•</span>
+            <span className="text-xs text-purple-600 font-medium">
+              {periods.length} total periods
+            </span>
+          </div>
         </div>
 
         {/* Day Pills Carousel (Active in Daily View) */}
@@ -445,7 +798,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
               ⭐ Today ({todayDay.slice(0, 3)})
             </button>
 
-            {MON_TO_SAT.map(day => {
+            {activeDaysList.map(day => {
               const isSelected = selectedDay === day;
               const count = periods.filter(p => p.days.includes(day)).length;
               return (
@@ -486,23 +839,25 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
         )}
       </div>
 
-      {/* FULL WEEKLY EDITABLE TIMETABLE (MON–SAT) */}
+      {/* FULL WEEKLY TIMETABLE (5-DAY OR 6-DAY) */}
       {viewMode === 'weekly_timetable' ? (
         <div className="space-y-4">
           <div className="flex items-center justify-between text-xs text-purple-800">
-            <span className="font-semibold">Full 6-day academic timetable (Monday to Saturday):</span>
+            <span className="font-semibold">
+              Academic timetable ({activeDaysList[0]} to {activeDaysList[activeDaysList.length - 1]}):
+            </span>
             <button
               type="button"
               onClick={() => openAddModal(todayDay)}
-              className="font-bold text-purple-700 hover:text-purple-950 underline flex items-center gap-1"
+              className="font-bold text-purple-700 hover:text-purple-950 underline flex items-center gap-1 cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" />
               <span>Add New Slot</span>
             </button>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
-            {MON_TO_SAT.map(day => {
+          <div className={`grid grid-cols-1 md:grid-cols-2 ${workDaysMode === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-3'} gap-3.5`}>
+            {activeDaysList.map(day => {
               const dayPeriods = periods
                 .filter(p => p.days.includes(day))
                 .sort((a, b) => a.startTime.localeCompare(b.startTime));
@@ -519,28 +874,28 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                 >
                   {/* Day Column Header */}
                   <div className="flex items-center justify-between pb-2 mb-2 border-b border-purple-100">
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <span className="text-sm font-bold font-classic text-purple-950">
                         {day}
                       </span>
                       {isToday && (
-                        <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-purple-700 text-white shadow-2xs">
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-purple-700 text-white shadow-2xs">
                           Today
                         </span>
                       )}
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-[11px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-100">
-                        {dayPeriods.length} {dayPeriods.length === 1 ? 'class' : 'classes'}
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-100">
+                        {dayPeriods.length}
                       </span>
                       <button
                         type="button"
                         onClick={() => openAddModal(day)}
                         title={`Add class period for ${day}`}
-                        className="p-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 transition-colors"
+                        className="p-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 transition-colors cursor-pointer"
                       >
-                        <Plus className="w-3.5 h-3.5" />
+                        <Plus className="w-3 h-3" />
                       </button>
                     </div>
                   </div>
@@ -571,7 +926,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                               <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${theme.badge}`}>
                                 {p.periodNumber}
                               </span>
-                              <div className="flex items-center gap-1 text-[11px] font-bold text-purple-900 font-mono">
+                              <div className="flex items-center gap-1 text-[10px] font-bold text-purple-900 font-mono">
                                 <Clock className="w-3 h-3 text-purple-600" />
                                 <span>{formatTime12(p.startTime)} - {formatTime12(p.endTime)}</span>
                               </div>
@@ -589,7 +944,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                               )}
                             </div>
 
-                            {/* Actions row: Attend checkbox, Edit, Delete */}
+                            {/* Actions row */}
                             <div className="pt-1.5 border-t border-black/5 flex items-center justify-between gap-2">
                               <button
                                 type="button"
@@ -608,7 +963,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => openEditModal(p)}
-                                  className="p-1 rounded text-purple-700 hover:bg-white/80 transition-colors"
+                                  className="p-1 rounded text-purple-700 hover:bg-white/80 transition-colors cursor-pointer"
                                   title="Edit period"
                                 >
                                   <Edit3 className="w-3 h-3" />
@@ -616,7 +971,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => handleDeletePeriod(p.id, p.subject)}
-                                  className="p-1 rounded text-purple-400 hover:text-rose-600 hover:bg-white/80 transition-colors"
+                                  className="p-1 rounded text-purple-400 hover:text-rose-600 hover:bg-white/80 transition-colors cursor-pointer"
                                   title="Delete period"
                                 >
                                   <Trash2 className="w-3 h-3" />
@@ -635,356 +990,540 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
         </div>
       ) : null}
 
-      {/* Class Periods List / Grid (Active in Daily Cards view) */}
+      {/* DAILY CARDS VIEW */}
       {viewMode === 'daily_cards' && (
-        <>
-          <div className="space-y-3">
-        {displayedPeriods.length === 0 ? (
-          <div className="p-8 text-center rounded-2xl bg-purple-50/50 border border-dashed border-purple-200 space-y-3">
-            <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center text-2xl mx-auto">
-              📚
+        <div className="space-y-3">
+          {periods.filter(p => selectedDay === 'ALL' || p.days.includes(selectedDay)).length === 0 ? (
+            <div className="p-8 text-center rounded-2xl bg-purple-50/50 border border-dashed border-purple-200 space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center text-2xl mx-auto">
+                📚
+              </div>
+              <h4 className="text-sm font-bold text-purple-950">No classes scheduled</h4>
+              <button
+                type="button"
+                onClick={() => openAddModal()}
+                className="px-4 py-2 rounded-xl bg-purple-700 text-white font-bold text-xs cursor-pointer"
+              >
+                + Add Class Period
+              </button>
             </div>
-            <div>
-              <h4 className="text-sm font-bold font-classic text-purple-950">
-                No classes scheduled for {selectedDay === 'ALL' ? 'the week' : selectedDay}
-              </h4>
-              <p className="text-xs text-purple-700/80 mt-0.5">
-                Add your lecture slots, lab periods, or seminar hours for this day.
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={() => openAddModal(selectedDay !== 'ALL' ? selectedDay : todayDay)}
-              className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-purple-700 hover:bg-purple-800 text-white text-xs font-bold transition-all shadow-xs"
-            >
-              <Plus className="w-4 h-4" />
-              <span>Add Period for {selectedDay === 'ALL' ? 'Today' : selectedDay}</span>
-            </button>
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
-            {displayedPeriods.map((period) => {
-              const theme = COLOR_THEMES.find(t => t.id === period.colorTheme) || COLOR_THEMES[0];
-              const isToday = selectedDay === todayDay || (selectedDay === 'ALL' && period.days.includes(todayDay));
-
-              return (
-                <div
-                  key={period.id}
-                  className={`rounded-2xl p-4 border transition-all ${theme.bg} ${theme.border} hover:shadow-xs flex flex-col justify-between space-y-3 group`}
-                >
-                  {/* Top Bar: Period slot badge & Action Buttons */}
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`px-2.5 py-0.5 rounded-lg text-xs font-bold font-classic ${theme.badge} border border-black/5`}>
-                        {period.periodNumber}
-                      </span>
-                      {period.code && (
-                        <span className="text-[11px] font-mono font-semibold px-2 py-0.5 rounded-lg bg-white/70 text-purple-900 border border-purple-200/60">
-                          {period.code}
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              {periods
+                .filter(p => selectedDay === 'ALL' || p.days.includes(selectedDay))
+                .sort((a, b) => a.startTime.localeCompare(b.startTime))
+                .map(p => {
+                  const theme = COLOR_THEMES.find(t => t.id === p.colorTheme) || COLOR_THEMES[0];
+                  return (
+                    <div
+                      key={p.id}
+                      className={`p-4 rounded-2xl border ${theme.bg} ${theme.border} space-y-2`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className={`px-2 py-0.5 rounded text-[11px] font-bold ${theme.badge}`}>
+                          {p.periodNumber}
                         </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1 opacity-90 group-hover:opacity-100">
-                      <button
-                        type="button"
-                        onClick={() => handleDuplicatePeriod(period)}
-                        className="p-1.5 rounded-lg text-purple-700 hover:text-purple-950 hover:bg-white/60 transition-colors"
-                        title="Duplicate Period"
-                      >
-                        <Copy className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditModal(period)}
-                        className="p-1.5 rounded-lg text-purple-700 hover:text-purple-950 hover:bg-white/60 transition-colors"
-                        title="Edit Period Options"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => handleDeletePeriod(period.id, period.subject)}
-                        className="p-1.5 rounded-lg text-purple-400 hover:text-rose-600 hover:bg-white/60 transition-colors"
-                        title="Delete Period"
-                      >
-                        <Trash2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Middle Content: Subject, Time, Room, Instructor */}
-                  <div className="space-y-1.5">
-                    <h3 className="text-base font-bold font-classic text-purple-950 leading-tight">
-                      {period.subject}
-                    </h3>
-
-                    {/* Time pill */}
-                    <div className="flex items-center gap-2 text-xs font-semibold text-purple-900">
-                      <Clock className="w-3.5 h-3.5 text-purple-600 flex-shrink-0" />
-                      <span>{formatTime12(period.startTime)} – {formatTime12(period.endTime)}</span>
-                    </div>
-
-                    {/* Room & Instructor */}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1 pt-1 text-[11px] text-purple-800">
-                      {period.room && (
-                        <div className="flex items-center gap-1.5 truncate">
-                          <MapPin className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                          <span className="truncate">{period.room}</span>
+                        <div className="flex items-center gap-1 text-xs font-mono font-bold text-purple-950">
+                          <Clock className="w-3.5 h-3.5 text-purple-700" />
+                          <span>{formatTime12(p.startTime)} - {formatTime12(p.endTime)}</span>
                         </div>
-                      )}
-                      {period.instructor && (
-                        <div className="flex items-center gap-1.5 truncate">
-                          <User className="w-3 h-3 text-purple-500 flex-shrink-0" />
-                          <span className="truncate">{period.instructor}</span>
+                      </div>
+
+                      <div>
+                        <h4 className="text-base font-bold text-purple-950">{p.subject}</h4>
+                        <div className="text-xs text-purple-800 flex items-center gap-2 mt-1">
+                          {p.code && <span className="font-mono font-bold">{p.code}</span>}
+                          {p.room && <span>• {p.room}</span>}
+                          {p.instructor && <span>• {p.instructor}</span>}
                         </div>
-                      )}
-                    </div>
+                      </div>
 
-                    {/* Custom Notes */}
-                    {period.notes && (
-                      <p className="text-[11px] text-purple-700/90 italic bg-white/50 p-1.5 rounded-lg border border-purple-200/50 mt-1">
-                        📝 {period.notes}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Bottom: Days chips & Attendance Toggle */}
-                  <div className="pt-2 border-t border-purple-200/60 flex items-center justify-between gap-2">
-                    <div className="flex flex-wrap gap-1">
-                      {period.days.map(d => (
-                        <span
-                          key={d}
-                          className={`text-[9px] px-1.5 py-0.5 rounded-md font-bold uppercase ${
-                            d === todayDay
-                              ? 'bg-purple-700 text-white'
-                              : 'bg-white/80 text-purple-900 border border-purple-200/80'
-                          }`}
+                      <div className="flex items-center justify-between pt-2 border-t border-black/5">
+                        <button
+                          type="button"
+                          onClick={() => toggleAttendance(p.id)}
+                          className="flex items-center gap-1.5 text-xs font-bold text-purple-950 cursor-pointer"
                         >
-                          {d.slice(0, 3)}
-                        </span>
-                      ))}
+                          {p.attendedToday ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                          ) : (
+                            <Circle className="w-4 h-4 text-purple-400" />
+                          )}
+                          <span>{p.attendedToday ? 'Attended Today' : 'Mark Attendance'}</span>
+                        </button>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleDuplicatePeriod(p)}
+                            className="p-1.5 rounded-lg text-purple-700 hover:bg-white/80"
+                            title="Duplicate period"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => openEditModal(p)}
+                            className="p-1.5 rounded-lg text-purple-700 hover:bg-white/80"
+                            title="Edit period"
+                          >
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeletePeriod(p.id, p.subject)}
+                            className="p-1.5 rounded-lg text-rose-500 hover:bg-white/80"
+                            title="Delete period"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
                     </div>
-
-                    {isToday && (
-                      <button
-                        type="button"
-                        onClick={() => toggleAttendance(period.id)}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                          period.attendedToday
-                            ? 'bg-purple-800 text-white shadow-2xs'
-                            : 'bg-white/90 hover:bg-white text-purple-900 border border-purple-300'
-                        }`}
-                      >
-                        {period.attendedToday ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5 text-purple-200" />
-                            <span>Attended</span>
-                          </>
-                        ) : (
-                          <>
-                            <Circle className="w-3.5 h-3.5 text-purple-400" />
-                            <span>Mark Attended</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Preset Helper Bar for Instant Schedule Setup */}
-      <div className="p-3.5 rounded-2xl bg-purple-50/70 border border-purple-200/70 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 text-xs">
-        <div className="flex items-center gap-2 text-purple-900 font-medium">
-          <Sparkles className="w-4 h-4 text-purple-600 flex-shrink-0" />
-          <span>Quick Schedule Presets:</span>
+                  );
+                })}
+            </div>
+          )}
         </div>
-        <div className="flex flex-wrap gap-1.5">
-          <button
-            type="button"
-            onClick={() => {
-              onUpdatePeriods(DEFAULT_CLASS_PERIODS);
-              onToast("Preset Loaded", "Loaded 4 Standard College Periods (CS & Physics)", "success");
-              if (soundEnabled) playSuccessChime();
-            }}
-            className="px-2.5 py-1 rounded-xl bg-white hover:bg-purple-100 text-purple-950 font-bold border border-purple-200 transition-colors shadow-2xs"
-          >
-            College 4-Period Preset
-          </button>
-          <button
-            type="button"
-            onClick={() => openAddModal()}
-            className="px-2.5 py-1 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold transition-colors shadow-2xs flex items-center gap-1"
-          >
-            <Plus className="w-3 h-3" />
-            <span>Custom Period</span>
-          </button>
-        </div>
-      </div>
-      </>
       )}
 
-      {/* Full Customizable Modal for Class Period */}
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-purple-950/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-purple-200 relative max-h-[90vh] overflow-y-auto">
-            {/* Close modal */}
-            <button
-              type="button"
-              onClick={() => setIsModalOpen(false)}
-              className="absolute top-4 right-4 p-2 rounded-xl text-purple-400 hover:text-purple-700 hover:bg-purple-50 transition-colors"
-            >
-              <X className="w-5 h-5" />
-            </button>
+      {/* EVENING NEXT-DAY CONFIRMATION MODAL & CHECKLIST */}
+      {isEveningConfirmationOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-purple-950/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-purple-200 relative max-h-[90vh] flex flex-col">
+            
+            {/* Modal Header */}
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3 mb-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-indigo-100 text-indigo-800 flex items-center justify-center text-xl font-bold shadow-xs border border-indigo-200">
+                  🌙
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-classic text-purple-950">
+                    Evening Check: Tomorrow's Schedule
+                  </h3>
+                  <p className="text-xs text-purple-700 font-medium">
+                    Tomorrow is <strong>{tomorrowDay}</strong> ({tomorrowDateStr})
+                  </p>
+                </div>
+              </div>
 
-            {/* Modal Title */}
-            <div className="flex items-center gap-3 mb-4">
-              <div className="p-2.5 rounded-2xl bg-purple-100 text-purple-800 border border-purple-200">
-                <BookOpen className="w-5 h-5" />
+              <button
+                type="button"
+                onClick={() => setIsEveningConfirmationOpen(false)}
+                className="p-1.5 rounded-xl text-purple-400 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Content Checklist */}
+            <div className="overflow-y-auto space-y-4 flex-1 pr-1">
+              <div className="p-3 rounded-2xl bg-purple-50/80 border border-purple-200/90 text-xs text-purple-900 flex items-center justify-between">
+                <span>Select which periods you want active reminders for tomorrow:</span>
+                <button
+                  type="button"
+                  onClick={() => setIsAddPeriodForTomorrowOpen(true)}
+                  className="px-2.5 py-1 rounded-lg bg-purple-700 text-white font-bold text-[11px] flex items-center gap-1 shadow-2xs hover:bg-purple-800"
+                >
+                  <Plus className="w-3 h-3" />
+                  <span>Add Tomorrow Class</span>
+                </button>
               </div>
-              <div>
-                <h3 className="text-lg font-bold font-classic text-purple-950 leading-tight">
-                  {editingPeriodId ? 'Edit Class Time Period' : 'Add Custom Class Period'}
+
+              {/* Tomorrow Periods Checklist */}
+              <div className="space-y-2.5">
+                {tomorrowAllPeriods.length === 0 ? (
+                  <div className="p-6 text-center rounded-2xl border border-dashed border-purple-200 text-xs text-purple-600">
+                    No classes scheduled for tomorrow ({tomorrowDay}). Enjoy your break or click "+ Add Tomorrow Class" above if you have a special lecture!
+                  </div>
+                ) : (
+                  tomorrowAllPeriods.map(p => {
+                    const isRemindActive = tomorrowReminderMap[p.id] !== false;
+                    return (
+                      <div
+                        key={p.id}
+                        className={`p-3 rounded-2xl border transition-all flex items-center justify-between gap-3 ${
+                          isRemindActive
+                            ? 'bg-purple-50/80 border-purple-300 shadow-2xs'
+                            : 'bg-slate-50 border-slate-200 opacity-60'
+                        }`}
+                      >
+                        {/* Checkbox & Period details */}
+                        <div className="flex items-center gap-3 min-w-0">
+                          <input
+                            type="checkbox"
+                            checked={isRemindActive}
+                            onChange={() => handleToggleTomorrowPeriodReminder(p.id)}
+                            className="w-4 h-4 rounded text-purple-700 focus:ring-purple-500 cursor-pointer"
+                          />
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-xs text-purple-950 truncate">
+                                {p.subject}
+                              </span>
+                              <span className="text-[10px] bg-purple-200/80 text-purple-900 px-1.5 py-0.2 rounded font-mono">
+                                {p.periodNumber}
+                              </span>
+                            </div>
+                            <div className="text-[11px] text-purple-700 flex items-center gap-2 mt-0.5">
+                              <span className="font-mono">{formatTime12(p.startTime)} - {formatTime12(p.endTime)}</span>
+                              {p.room && <span>• {p.room}</span>}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Skip / Remove from tomorrow button */}
+                        <button
+                          type="button"
+                          onClick={() => handleDeleteTomorrowPeriod(p.id)}
+                          title="Skip or remove this class from tomorrow's reminders"
+                          className="text-xs font-bold text-rose-500 hover:text-rose-700 hover:bg-rose-50 p-1.5 rounded-lg transition-colors flex items-center gap-1 cursor-pointer flex-shrink-0"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span className="hidden sm:inline">Skip</span>
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              {/* Add Extra Period for Tomorrow Popup Form */}
+              {isAddPeriodForTomorrowOpen && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/90 border border-indigo-200 space-y-3 animate-fadeIn">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-950 flex items-center gap-1">
+                      <Plus className="w-3.5 h-3.5 text-indigo-600" />
+                      <span>Add Extra / Makeup Period for Tomorrow</span>
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsAddPeriodForTomorrowOpen(false)}
+                      className="text-indigo-400 hover:text-indigo-700"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-bold text-indigo-900 mb-0.5">Subject</label>
+                      <input
+                        type="text"
+                        value={newTomorrowSubject}
+                        onChange={(e) => setNewTomorrowSubject(e.target.value)}
+                        placeholder="e.g. Extra Physics Tutorial"
+                        className="w-full px-2.5 py-1 text-xs rounded-lg border border-indigo-200 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-indigo-900 mb-0.5">Room / Link</label>
+                      <input
+                        type="text"
+                        value={newTomorrowRoom}
+                        onChange={(e) => setNewTomorrowRoom(e.target.value)}
+                        placeholder="Room 102"
+                        className="w-full px-2.5 py-1 text-xs rounded-lg border border-indigo-200 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-indigo-900 mb-0.5">Start Time</label>
+                      <input
+                        type="time"
+                        value={newTomorrowTime}
+                        onChange={(e) => setNewTomorrowTime(e.target.value)}
+                        className="w-full px-2.5 py-1 text-xs rounded-lg border border-indigo-200 bg-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-bold text-indigo-900 mb-0.5">End Time</label>
+                      <input
+                        type="time"
+                        value={newTomorrowEndTime}
+                        onChange={(e) => setNewTomorrowEndTime(e.target.value)}
+                        className="w-full px-2.5 py-1 text-xs rounded-lg border border-indigo-200 bg-white"
+                      />
+                    </div>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleAddPeriodForTomorrow}
+                    className="w-full py-1.5 rounded-lg bg-indigo-700 hover:bg-indigo-800 text-white font-bold text-xs"
+                  >
+                    Add to Tomorrow's List
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-purple-100 pt-3 mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={() => setIsEveningConfirmationOpen(false)}
+                className="px-3 py-1.5 text-xs font-bold text-purple-700 hover:bg-purple-50 rounded-xl"
+              >
+                Close
+              </button>
+
+              <button
+                type="button"
+                onClick={handleConfirmTomorrowSchedule}
+                className="px-5 py-2 rounded-xl bg-purple-950 hover:bg-purple-900 text-white font-bold text-xs flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+              >
+                <Check className="w-4 h-4 text-emerald-400" />
+                <span>Confirm Tomorrow's Reminders</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* UPLOAD / IMPORT TIMETABLE MODAL */}
+      {isUploadModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-purple-950/70 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl border border-purple-200 relative max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3 mb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-800 flex items-center justify-center text-xl font-bold border border-purple-200">
+                  📥
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold font-classic text-purple-950">
+                    Upload / Import Weekly Timetable
+                  </h3>
+                  <p className="text-xs text-purple-700 font-medium">
+                    Upload a file, paste structured text, or load a preset schedule
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="p-1.5 rounded-xl text-purple-400 hover:text-purple-700 hover:bg-purple-50 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Tabs */}
+            <div className="flex items-center gap-2 p-1 bg-purple-100/80 rounded-2xl border border-purple-200 mb-3">
+              <button
+                type="button"
+                onClick={() => setUploadTab('file')}
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  uploadTab === 'file' ? 'bg-purple-800 text-white shadow-xs' : 'text-purple-900 hover:bg-purple-200/60'
+                }`}
+              >
+                📁 Upload CSV/JSON
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadTab('paste')}
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  uploadTab === 'paste' ? 'bg-purple-800 text-white shadow-xs' : 'text-purple-900 hover:bg-purple-200/60'
+                }`}
+              >
+                📋 Paste Schedule
+              </button>
+              <button
+                type="button"
+                onClick={() => setUploadTab('templates')}
+                className={`flex-1 py-1.5 rounded-xl text-xs font-bold transition-all ${
+                  uploadTab === 'templates' ? 'bg-purple-800 text-white shadow-xs' : 'text-purple-900 hover:bg-purple-200/60'
+                }`}
+              >
+                ⚡ 1-Click Templates
+              </button>
+            </div>
+
+            {/* Tab Body */}
+            <div className="overflow-y-auto space-y-4 flex-1 pr-1">
+              {fileError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-xs text-rose-800 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
+                  <span>{fileError}</span>
+                </div>
+              )}
+
+              {/* TAB 1: FILE UPLOAD */}
+              {uploadTab === 'file' && (
+                <div className="space-y-4">
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="border-2 border-dashed border-purple-300 hover:border-purple-500 rounded-2xl p-6 text-center cursor-pointer bg-purple-50/40 hover:bg-purple-50/80 transition-all space-y-2"
+                  >
+                    <Upload className="w-8 h-8 text-purple-600 mx-auto" />
+                    <p className="text-xs font-bold text-purple-950">Click to select or drag and drop timetable file</p>
+                    <p className="text-[11px] text-purple-600">Supports .json or .csv timetable exports</p>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".json,.csv,text/csv,application/json"
+                      onChange={handleFileUpload}
+                      className="hidden"
+                    />
+                  </div>
+
+                  <div className="p-3 rounded-2xl bg-purple-50 border border-purple-200/80 text-[11px] text-purple-800 space-y-1">
+                    <p className="font-bold">Supported CSV Column Format:</p>
+                    <p className="font-mono text-[10px] text-purple-950">Day, Period, Subject, Code, StartTime, EndTime, Room, Instructor</p>
+                    <p className="italic text-purple-600">Example: Monday, Period 1, Calculus II, MATH 201, 09:00, 10:15, Hall 3, Prof. Smith</p>
+                  </div>
+                </div>
+              )}
+
+              {/* TAB 2: PASTE */}
+              {uploadTab === 'paste' && (
+                <div className="space-y-3">
+                  <label className="block text-xs font-bold text-purple-950">
+                    Paste CSV or JSON Timetable Text:
+                  </label>
+                  <textarea
+                    rows={7}
+                    value={pasteContent}
+                    onChange={(e) => setPasteContent(e.target.value)}
+                    placeholder={`Day, Period, Subject, Code, StartTime, EndTime, Room, Instructor\nMonday, Period 1, Data Structures, CS 301, 09:00, 10:15, Room 204, Prof. Anderson\nTuesday, Period 2, Linear Algebra, MATH 202, 10:30, 11:45, Hall B, Dr. Clark`}
+                    className="w-full p-3 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-mono focus:ring-2 focus:ring-purple-500/20"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => processTimetableImport(pasteContent, pasteContent.trim().startsWith('[') ? 'json' : 'csv')}
+                    className="w-full py-2 bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs rounded-xl shadow-xs"
+                  >
+                    Parse and Apply Timetable
+                  </button>
+                </div>
+              )}
+
+              {/* TAB 3: 1-CLICK TEMPLATES */}
+              {uploadTab === 'templates' && (
+                <div className="space-y-3">
+                  <p className="text-xs text-purple-800">
+                    Quickly load a pre-built full schedule to kickstart your weekly timetable:
+                  </p>
+
+                  <div className="space-y-2">
+                    <div className="p-3 rounded-2xl border border-purple-200 bg-purple-50/70 flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-purple-950">Engineering & Tech Schedule (5-Day)</h4>
+                        <p className="text-[11px] text-purple-700">OS, Algorithms, Cybersecurity, Web Systems (Mon–Fri)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onUpdatePeriods(PRESET_SCHEDULES.cs_5day as any);
+                          setWorkDaysMode(5);
+                          setIsUploadModalOpen(false);
+                          if (soundEnabled) playSuccessChime();
+                          onToast('Template Applied', 'Loaded 5-Day Engineering schedule template.', 'success');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs cursor-pointer flex-shrink-0"
+                      >
+                        Load 5-Day
+                      </button>
+                    </div>
+
+                    <div className="p-3 rounded-2xl border border-purple-200 bg-purple-50/70 flex items-center justify-between gap-3">
+                      <div>
+                        <h4 className="text-xs font-bold text-purple-950">Comprehensive College Schedule (6-Day)</h4>
+                        <p className="text-[11px] text-purple-700">Math, Physics, Chemistry, English + Saturday Seminars (Mon–Sat)</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onUpdatePeriods(PRESET_SCHEDULES.college_6day as any);
+                          setWorkDaysMode(6);
+                          setIsUploadModalOpen(false);
+                          if (soundEnabled) playSuccessChime();
+                          onToast('Template Applied', 'Loaded 6-Day Comprehensive College schedule template.', 'success');
+                        }}
+                        className="px-3 py-1.5 rounded-xl bg-purple-700 hover:bg-purple-800 text-white font-bold text-xs cursor-pointer flex-shrink-0"
+                      >
+                        Load 6-Day
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="border-t border-purple-100 pt-3 mt-3 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setIsUploadModalOpen(false)}
+                className="px-4 py-1.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-900 font-bold text-xs"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* CREATE / EDIT PERIOD MODAL */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-purple-950/60 backdrop-blur-xs animate-fadeIn">
+          <div className="bg-white rounded-3xl w-full max-w-lg p-5 sm:p-6 shadow-2xl border border-purple-200 relative max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-purple-100 pb-3 mb-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">📚</span>
+                <h3 className="text-base sm:text-lg font-bold font-classic text-purple-950">
+                  {editingPeriodId ? 'Edit Class Period' : 'Add Class Period to Timetable'}
                 </h3>
-                <p className="text-xs text-purple-700/80">
-                  Set specific start time, period name, days of week & class info
-                </p>
               </div>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-purple-400 hover:text-purple-700"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
             <form onSubmit={handleSavePeriod} className="space-y-4">
-              {/* Period Name & Course Code */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div className="sm:col-span-1">
-                  <label className="block text-xs font-bold text-purple-950 mb-1">
-                    Period / Slot Name *
-                  </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">Period Name / Slot</label>
                   <input
                     type="text"
                     value={formPeriodNumber}
                     onChange={(e) => setFormPeriodNumber(e.target.value)}
                     placeholder="e.g. Period 1, Slot A"
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
-                    required
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
                   />
                 </div>
-
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-bold text-purple-950 mb-1">
-                    Subject / Course Name *
-                  </label>
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">Subject Title *</label>
                   <input
                     type="text"
                     value={formSubject}
                     onChange={(e) => setFormSubject(e.target.value)}
-                    placeholder="e.g. Data Structures & Algorithms"
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
+                    placeholder="e.g. Data Structures"
                     required
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
                   />
                 </div>
               </div>
 
-              {/* Start Time & End Time */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Start Time *</span>
-                  </label>
-                  <input
-                    type="time"
-                    value={formStartTime}
-                    onChange={(e) => setFormStartTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-purple-600" />
-                    <span>End Time *</span>
-                  </label>
-                  <input
-                    type="time"
-                    value={formEndTime}
-                    onChange={(e) => setFormEndTime(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
-                    required
-                  />
-                </div>
-
-                <div className="col-span-2 sm:col-span-1">
-                  <label className="block text-xs font-bold text-purple-950 mb-1">
-                    Course Code (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={formCode}
-                    onChange={(e) => setFormCode(e.target.value)}
-                    placeholder="e.g. CS 301"
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
-                  />
-                </div>
-              </div>
-
-              {/* Days of the Week Selector */}
-              <div className="space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-bold text-purple-950">
-                    Schedule Days *
-                  </label>
-                  <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
-                    <button
-                      type="button"
-                      onClick={selectMonSat}
-                      className="text-purple-700 hover:text-purple-950 underline font-bold"
-                    >
-                      Mon-Sat
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={selectAllWeekdays}
-                      className="text-purple-700 hover:text-purple-950 underline font-bold"
-                    >
-                      Mon-Fri
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={selectMWF}
-                      className="text-purple-700 hover:text-purple-950 underline font-bold"
-                    >
-                      MWF
-                    </button>
-                    <span>•</span>
-                    <button
-                      type="button"
-                      onClick={selectTT}
-                      className="text-purple-700 hover:text-purple-950 underline font-bold"
-                    >
-                      Tue/Thu
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
-                  {DAYS_OF_WEEK.map(day => {
-                    const isChecked = formDays.includes(day);
+              <div>
+                <label className="block text-xs font-bold text-purple-950 mb-1">Select Scheduled Days</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {activeDaysList.map(day => {
+                    const isSelected = formDays.includes(day);
                     return (
                       <button
                         key={day}
                         type="button"
                         onClick={() => toggleFormDay(day)}
-                        className={`py-2 px-1 rounded-xl text-xs font-bold transition-all border ${
-                          isChecked
-                            ? 'bg-purple-700 text-white border-purple-800 shadow-2xs scale-[1.02]'
-                            : 'bg-purple-50/50 text-purple-800 border-purple-200 hover:bg-purple-100'
+                        className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all border ${
+                          isSelected
+                            ? 'bg-purple-700 text-white border-purple-700 shadow-2xs'
+                            : 'bg-purple-50 text-purple-900 border-purple-200 hover:bg-purple-100'
                         }`}
                       >
                         {day.slice(0, 3)}
@@ -994,85 +1533,81 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                 </div>
               </div>
 
-              {/* Room & Instructor */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Room / Lecture Hall</span>
-                  </label>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">Start Time</label>
                   <input
-                    type="text"
-                    value={formRoom}
-                    onChange={(e) => setFormRoom(e.target.value)}
-                    placeholder="e.g. Block B - Room 204"
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
+                    type="time"
+                    value={formStartTime}
+                    onChange={(e) => setFormStartTime(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
                   />
                 </div>
-
                 <div>
-                  <label className="block text-xs font-bold text-purple-950 mb-1 flex items-center gap-1">
-                    <User className="w-3.5 h-3.5 text-purple-600" />
-                    <span>Professor / Instructor</span>
-                  </label>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">End Time</label>
                   <input
-                    type="text"
-                    value={formInstructor}
-                    onChange={(e) => setFormInstructor(e.target.value)}
-                    placeholder="e.g. Prof. Anderson"
-                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950 focus:ring-2 focus:ring-purple-500/20"
+                    type="time"
+                    value={formEndTime}
+                    onChange={(e) => setFormEndTime(e.target.value)}
+                    required
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
                   />
                 </div>
               </div>
 
-              {/* Color Theme Selector */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-bold text-purple-950">
-                  Card Theme Tag
-                </label>
-                <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">Room / Hall</label>
+                  <input
+                    type="text"
+                    value={formRoom}
+                    onChange={(e) => setFormRoom(e.target.value)}
+                    placeholder="Hall B - Rm 204"
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1">Instructor</label>
+                  <input
+                    type="text"
+                    value={formInstructor}
+                    onChange={(e) => setFormInstructor(e.target.value)}
+                    placeholder="Prof. Anderson"
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-semibold text-purple-950"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-purple-950 mb-1">Color Theme</label>
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
                   {COLOR_THEMES.map(theme => (
                     <button
                       key={theme.id}
                       type="button"
                       onClick={() => setFormColor(theme.id as any)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all border ${theme.bg} ${theme.border} ${theme.text} ${
-                        formColor === theme.id ? `ring-2 ${theme.ring} shadow-xs scale-105` : 'opacity-70 hover:opacity-100'
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold border ${theme.bg} ${theme.border} ${theme.text} ${
+                        formColor === theme.id ? `ring-2 ${theme.ring} scale-105` : 'opacity-70'
                       }`}
                     >
-                      <span className="w-2.5 h-2.5 rounded-full bg-current" />
-                      <span>{theme.name}</span>
+                      {theme.name}
                     </button>
                   ))}
                 </div>
               </div>
 
-              {/* Notes */}
-              <div>
-                <label className="block text-xs font-bold text-purple-950 mb-1">
-                  Notes & Key Reminders (Optional)
-                </label>
-                <input
-                  type="text"
-                  value={formNotes}
-                  onChange={(e) => setFormNotes(e.target.value)}
-                  placeholder="e.g. Bring scientific calculator & assignment sheets"
-                  className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/30 text-xs font-medium text-purple-950 focus:ring-2 focus:ring-purple-500/20"
-                />
-              </div>
-
-              {/* Form Action Buttons */}
-              <div className="flex items-center gap-2 pt-3 border-t border-purple-100">
+              <div className="flex items-center gap-2 pt-2 border-t border-purple-100">
                 <button
                   type="submit"
-                  className="flex-1 py-2.5 px-4 bg-gradient-to-r from-purple-700 to-indigo-700 hover:from-purple-800 hover:to-indigo-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
+                  className="flex-1 py-2.5 bg-purple-700 hover:bg-purple-800 text-white rounded-xl text-xs font-bold transition-all shadow-xs"
                 >
                   {editingPeriodId ? 'Save Period Changes' : 'Add Period to Timetable'}
                 </button>
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="py-2.5 px-4 bg-purple-100 hover:bg-purple-200 text-purple-900 rounded-xl text-xs font-semibold transition-colors"
+                  className="py-2.5 px-4 bg-purple-100 text-purple-900 rounded-xl text-xs font-semibold"
                 >
                   Cancel
                 </button>
@@ -1081,6 +1616,7 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
           </div>
         </div>
       )}
+
     </section>
   );
 };
