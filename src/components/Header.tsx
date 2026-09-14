@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { formatHeaderDate } from '../utils/helpers';
 import { RiskLevel } from '../types';
+import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
   userName?: string;
@@ -303,6 +304,9 @@ export const Header: React.FC<HeaderProps> = ({
             <Timer className="w-3.5 h-3.5 text-purple-700" />
             <span className="hidden lg:inline">Timer</span>
           </button>
+
+          {/* PWA In-App Install App Button */}
+          <PWAInstallButton variant="header" />
 
           {/* Desktop Controls: Sound & Android Mode */}
           <div className="hidden md:flex items-center gap-1.5">

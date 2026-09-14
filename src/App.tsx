@@ -21,6 +21,7 @@ import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystem
 import { BirthdayModal } from './components/BirthdayModal';
 import { HistoryPage } from './components/HistoryPage';
 import { InstitutionAttendanceTracker } from './components/InstitutionAttendanceTracker';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { 
   TodayData, 
   LabData, 
@@ -720,7 +721,10 @@ export default function App() {
                 config={attendanceConfig}
                 onUpdateConfig={(newCfg) => {
                   setAttendanceConfig(newCfg);
-                  handleUpdateStudentProfile({ overallAttendance: newCfg.attendancePercentage });
+                  handleUpdateStudentProfile({ 
+                    overallAttendance: newCfg.attendancePercentage,
+                    semesterWorkingDays: newCfg.totalWorkingDays
+                  });
                 }}
                 soundEnabled={soundEnabled}
                 onToast={showToast}
@@ -892,6 +896,9 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {/* Network Offline Indicator */}
+        <OfflineIndicator />
       </div>
     </AndroidFrame>
   );

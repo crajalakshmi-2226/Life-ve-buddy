@@ -405,16 +405,21 @@ export interface AttendanceDailyCheckIn {
   timestamp: number;
 }
 
+export type WorkingDaysPattern = '5_day' | '6_day' | 'custom_weekly' | 'custom_total';
+
 export interface InstitutionAttendanceConfig {
   institutionType: InstitutionType;
   institutionName: string;
+  workingDaysPattern?: WorkingDaysPattern; // 5_day, 6_day, custom_weekly, custom_total
   workingDaysMode: 'weekly' | 'monthly' | 'total'; // e.g. 5 days/week or 22 days/month or 90 total days
-  daysPerWeek: number; // e.g. 5 or 6 days/week
+  daysPerWeek: number; // e.g. 5 or 6 days/week, or custom 1-7
+  weeksInSemester?: number; // e.g. 15, 16, 18 weeks
   workingDaysPerMonth: number; // e.g. 22
-  totalWorkingDays: number; // e.g. 90
+  totalWorkingDays: number; // User-selected total working days (e.g. 75, 90, 108, or any number user sets)
   conductedDays: number; // How many working days conducted so far
   attendedDays: number; // How many attended
   leaveDays: number; // How many leaves taken
+  targetThreshold?: number; // User-selected minimum attendance target (e.g. 75% or 80%)
   attendancePercentage: number; // automatically calculated: (attendedDays / conductedDays) * 100
   lastCheckInDate?: string; // YYYY-MM-DD
   lastWorkingDayAttended?: string; // e.g. "2026-09-12"
