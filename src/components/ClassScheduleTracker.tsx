@@ -274,6 +274,14 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
     }
   };
 
+  const [viewMode, setViewMode] = useState<'weekly_timetable' | 'daily_cards'>('weekly_timetable');
+
+  const MON_TO_SAT: DayOfWeek[] = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+  const selectMonSat = () => {
+    setFormDays(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']);
+  };
+
   const selectAllWeekdays = () => {
     setFormDays(['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']);
   };
@@ -384,74 +392,253 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
         )}
       </div>
 
-      {/* Day Selector Tabs */}
+      {/* View Mode & Day Selector */}
       <div className="space-y-3">
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-bold uppercase tracking-wider text-purple-950">
-            View Schedule by Day
-          </span>
-          <span className="text-xs text-purple-600 font-medium">
-            {displayedPeriods.length} {displayedPeriods.length === 1 ? 'period' : 'periods'} shown
-          </span>
-        </div>
-
-        {/* Day Pills Carousel */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none">
-          <button
-            type="button"
-            onClick={() => setSelectedDay(todayDay)}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
-              selectedDay === todayDay
-                ? 'bg-purple-700 text-white shadow-xs'
-                : 'bg-purple-100 text-purple-900 hover:bg-purple-200'
-            }`}
-          >
-            ⭐ Today ({todayDay.slice(0, 3)})
-          </button>
-
-          {DAYS_OF_WEEK.map(day => {
-            const isSelected = selectedDay === day;
-            const isToday = day === todayDay;
-            const count = periods.filter(p => p.days.includes(day)).length;
-            return (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-purple-950">
+              Timetable Layout
+            </span>
+            <div className="flex items-center p-0.5 bg-purple-100 rounded-xl border border-purple-200">
               <button
-                key={day}
                 type="button"
-                onClick={() => setSelectedDay(day)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
-                  isSelected && selectedDay !== todayDay
+                onClick={() => setViewMode('weekly_timetable')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'weekly_timetable'
                     ? 'bg-purple-700 text-white shadow-xs'
-                    : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200/60'
+                    : 'text-purple-900 hover:bg-purple-200/60'
                 }`}
               >
-                <span>{day.slice(0, 3)}</span>
-                {count > 0 && (
-                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
-                    isSelected ? 'bg-purple-900 text-white' : 'bg-purple-200 text-purple-900'
-                  }`}>
-                    {count}
-                  </span>
-                )}
+                📅 Weekly Timetable (Mon–Sat)
               </button>
-            );
-          })}
+              <button
+                type="button"
+                onClick={() => setViewMode('daily_cards')}
+                className={`px-3 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                  viewMode === 'daily_cards'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'text-purple-900 hover:bg-purple-200/60'
+                }`}
+              >
+                📋 Single Day View
+              </button>
+            </div>
+          </div>
 
-          <button
-            type="button"
-            onClick={() => setSelectedDay('ALL')}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
-              selectedDay === 'ALL'
-                ? 'bg-purple-700 text-white shadow-xs'
-                : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200/60'
-            }`}
-          >
-            All Week View
-          </button>
+          <span className="text-xs text-purple-600 font-medium">
+            {periods.length} total periods registered across Mon–Sat
+          </span>
         </div>
+
+        {/* Day Pills Carousel (Active in Daily View) */}
+        {viewMode === 'daily_cards' && (
+          <div className="flex items-center gap-1.5 overflow-x-auto pb-1.5 scrollbar-none animate-fadeIn">
+            <button
+              type="button"
+              onClick={() => setSelectedDay(todayDay)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all cursor-pointer ${
+                selectedDay === todayDay
+                  ? 'bg-purple-700 text-white shadow-xs'
+                  : 'bg-purple-100 text-purple-900 hover:bg-purple-200'
+              }`}
+            >
+              ⭐ Today ({todayDay.slice(0, 3)})
+            </button>
+
+            {MON_TO_SAT.map(day => {
+              const isSelected = selectedDay === day;
+              const count = periods.filter(p => p.days.includes(day)).length;
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  onClick={() => setSelectedDay(day)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer flex items-center gap-1.5 ${
+                    isSelected && selectedDay !== todayDay
+                      ? 'bg-purple-700 text-white shadow-xs'
+                      : 'bg-purple-50 text-purple-900 hover:bg-purple-100 border border-purple-200/60'
+                  }`}
+                >
+                  <span>{day.slice(0, 3)}</span>
+                  {count > 0 && (
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                      isSelected ? 'bg-purple-900 text-white' : 'bg-purple-200 text-purple-900'
+                    }`}>
+                      {count}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
+
+            <button
+              type="button"
+              onClick={() => setSelectedDay('ALL')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                selectedDay === 'ALL'
+                  ? 'bg-purple-700 text-white shadow-xs'
+                  : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200/60'
+              }`}
+            >
+              All Periods
+            </button>
+          </div>
+        )}
       </div>
 
-      {/* Class Periods List / Grid */}
-      <div className="space-y-3">
+      {/* FULL WEEKLY EDITABLE TIMETABLE (MON–SAT) */}
+      {viewMode === 'weekly_timetable' ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between text-xs text-purple-800">
+            <span className="font-semibold">Full 6-day academic timetable (Monday to Saturday):</span>
+            <button
+              type="button"
+              onClick={() => openAddModal(todayDay)}
+              className="font-bold text-purple-700 hover:text-purple-950 underline flex items-center gap-1"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              <span>Add New Slot</span>
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
+            {MON_TO_SAT.map(day => {
+              const dayPeriods = periods
+                .filter(p => p.days.includes(day))
+                .sort((a, b) => a.startTime.localeCompare(b.startTime));
+              const isToday = day === todayDay;
+
+              return (
+                <div 
+                  key={day}
+                  className={`rounded-2xl p-3.5 border transition-all flex flex-col justify-between ${
+                    isToday 
+                      ? 'bg-purple-50/90 border-purple-300 ring-2 ring-purple-400/50 shadow-xs' 
+                      : 'bg-white border-purple-200/90 hover:border-purple-300'
+                  }`}
+                >
+                  {/* Day Column Header */}
+                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-purple-100">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-bold font-classic text-purple-950">
+                        {day}
+                      </span>
+                      {isToday && (
+                        <span className="px-2 py-0.2 rounded-full text-[10px] font-extrabold bg-purple-700 text-white shadow-2xs">
+                          Today
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-100">
+                        {dayPeriods.length} {dayPeriods.length === 1 ? 'class' : 'classes'}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => openAddModal(day)}
+                        title={`Add class period for ${day}`}
+                        className="p-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 transition-colors"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Day Classes List */}
+                  <div className="space-y-2 flex-1 min-h-[140px]">
+                    {dayPeriods.length === 0 ? (
+                      <div className="h-full flex flex-col items-center justify-center py-6 text-center text-slate-400 space-y-1.5 border border-dashed border-purple-200/60 rounded-xl bg-purple-50/20">
+                        <span className="text-lg opacity-40">☕</span>
+                        <p className="text-xs font-medium text-purple-400">No classes on {day}</p>
+                        <button
+                          type="button"
+                          onClick={() => openAddModal(day)}
+                          className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
+                        >
+                          + Add slot
+                        </button>
+                      </div>
+                    ) : (
+                      dayPeriods.map(p => {
+                        const theme = COLOR_THEMES.find(t => t.id === p.colorTheme) || COLOR_THEMES[0];
+                        return (
+                          <div
+                            key={`${day}-${p.id}`}
+                            className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all ${theme.bg} ${theme.border} group`}
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${theme.badge}`}>
+                                {p.periodNumber}
+                              </span>
+                              <div className="flex items-center gap-1 text-[11px] font-bold text-purple-900 font-mono">
+                                <Clock className="w-3 h-3 text-purple-600" />
+                                <span>{formatTime12(p.startTime)} - {formatTime12(p.endTime)}</span>
+                              </div>
+                            </div>
+
+                            <div>
+                              <h4 className="font-bold text-purple-950 line-clamp-1">
+                                {p.subject}
+                              </h4>
+                              {(p.code || p.room) && (
+                                <div className="text-[10px] text-purple-700 font-medium flex items-center gap-2 mt-0.5">
+                                  {p.code && <span className="font-semibold">{p.code}</span>}
+                                  {p.room && <span>• {p.room}</span>}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Actions row: Attend checkbox, Edit, Delete */}
+                            <div className="pt-1.5 border-t border-black/5 flex items-center justify-between gap-2">
+                              <button
+                                type="button"
+                                onClick={() => toggleAttendance(p.id)}
+                                className="flex items-center gap-1 text-[10px] font-bold text-purple-900 cursor-pointer"
+                              >
+                                {p.attendedToday ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100" />
+                                ) : (
+                                  <Circle className="w-3.5 h-3.5 text-purple-400" />
+                                )}
+                                <span>{p.attendedToday ? 'Attended' : 'Mark attend'}</span>
+                              </button>
+
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => openEditModal(p)}
+                                  className="p-1 rounded text-purple-700 hover:bg-white/80 transition-colors"
+                                  title="Edit period"
+                                >
+                                  <Edit3 className="w-3 h-3" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeletePeriod(p.id, p.subject)}
+                                  className="p-1 rounded text-purple-400 hover:text-rose-600 hover:bg-white/80 transition-colors"
+                                  title="Delete period"
+                                >
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+
+      {/* Class Periods List / Grid (Active in Daily Cards view) */}
+      {viewMode === 'daily_cards' && (
+        <>
+          <div className="space-y-3">
         {displayedPeriods.length === 0 ? (
           <div className="p-8 text-center rounded-2xl bg-purple-50/50 border border-dashed border-purple-200 space-y-3">
             <div className="w-12 h-12 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center text-2xl mx-auto">
@@ -638,6 +825,8 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
           </button>
         </div>
       </div>
+      </>
+      )}
 
       {/* Full Customizable Modal for Class Period */}
       {isModalOpen && (
@@ -749,7 +938,15 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
                   <label className="block text-xs font-bold text-purple-950">
                     Schedule Days *
                   </label>
-                  <div className="flex items-center gap-1.5 text-[10px]">
+                  <div className="flex items-center gap-1.5 text-[10px] flex-wrap">
+                    <button
+                      type="button"
+                      onClick={selectMonSat}
+                      className="text-purple-700 hover:text-purple-950 underline font-bold"
+                    >
+                      Mon-Sat
+                    </button>
+                    <span>•</span>
                     <button
                       type="button"
                       onClick={selectAllWeekdays}

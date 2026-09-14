@@ -1,4 +1,17 @@
-import { LabData, ProjectData, ClassPeriod, DayOfWeek, ExamItem, HolidayItem, HolidayCountdownInfo, HolidayCategory } from '../types';
+import { 
+  LabData, 
+  ProjectData, 
+  ClassPeriod, 
+  DayOfWeek, 
+  ExamItem, 
+  HolidayItem, 
+  HolidayCountdownInfo, 
+  HolidayCategory,
+  BirthdayData,
+  InstitutionAttendanceConfig,
+  CustomReminderTiming,
+  HistoryRecordItem
+} from '../types';
 
 export function getTodayDateString(): string {
   const d = new Date();
@@ -484,30 +497,40 @@ export const DEFAULT_EXAMS: ExamItem[] = [
 // HOLIDAY HELPERS & COUNTDOWN CALCULATOR
 // ==========================================
 
+/**
+ * Calculates and confirms the exact calendar weekday name (e.g. "Monday", "Tuesday")
+ * directly from the YYYY-MM-DD date string by evaluating at local noon, avoiding
+ * any midnight UTC or daylight-savings timezone boundary shifts.
+ */
+export function getConfirmedDayName(dateStr: string): string {
+  if (!dateStr) return '';
+  const parts = dateStr.split('-').map(Number);
+  if (parts.length < 3) return '';
+  const [year, month, day] = parts;
+  if (!year || !month || !day) return '';
+
+  const targetDate = new Date(year, month - 1, day, 12, 0, 0);
+  const confirmedDays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+  return confirmedDays[targetDate.getDay()];
+}
+
 export function formatHolidayDate(startDate: string, endDate?: string): string {
   if (!startDate) return '';
   const [sy, sm, sd] = startDate.split('-').map(Number);
-  const startObj = new Date(sy, sm - 1, sd);
-  const startFormatted = startObj.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric'
-  });
+  const confirmedStartDay = getConfirmedDayName(startDate);
+  const startObj = new Date(sy, sm - 1, sd, 12, 0, 0);
+  const monthName = startObj.toLocaleDateString('en-US', { month: 'short' });
 
   if (!endDate || endDate === startDate) {
-    return `${startFormatted}, ${sy}`;
+    return `${confirmedStartDay}, ${monthName} ${sd}, ${sy}`;
   }
 
   const [ey, em, ed] = endDate.split('-').map(Number);
-  const endObj = new Date(ey, em - 1, ed);
-  const endFormatted = endObj.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric'
-  });
+  const confirmedEndDay = getConfirmedDayName(endDate);
+  const endObj = new Date(ey, em - 1, ed, 12, 0, 0);
+  const endMonthName = endObj.toLocaleDateString('en-US', { month: 'short' });
 
-  return `${startFormatted} – ${endFormatted}`;
+  return `${confirmedStartDay}, ${monthName} ${sd} – ${confirmedEndDay}, ${endMonthName} ${ed}, ${ey}`;
 }
 
 export function getHolidayCountdown(holiday: HolidayItem): HolidayCountdownInfo {
@@ -715,5 +738,222 @@ export const DEFAULT_HOLIDAYS: HolidayItem[] = [
     studyCatchUpGoal: 'Read 1 tech book, build a personal portfolio project, and refresh coding fundamentals.'
   }
 ];
+
+// ==========================================
+// BIRTHDAY REMINDER HELPERS & WISH GENERATOR
+// ==========================================
+
+export const DEFAULT_BIRTHDAY_DATA: BirthdayData = {
+  birthdayDate: '',
+  userName: 'Friend',
+  wishesEnabled: true,
+  reminderTiming: {
+    value: 1,
+    unit: 'days'
+  },
+  customWishNote: ''
+};
+
+export const WARM_BIRTHDAY_WISHES = [
+  "🎉 Happy Birthday! Today we celebrate you and everything you bring to the world. May this year be filled with remarkable breakthroughs, unshakable confidence, deep wisdom, and joyful milestones. You're building an incredible future—keep shining bright!",
+  "🎂 Wishing you the happiest of birthdays! Take a moment today to reflect on how far you've come, the grit you've shown, and the boundless potential ahead of you. May every goal you chase this year turn into a triumphant victory!",
+  "✨ Happy Birthday, champion! Another trip around the sun, and another chapter to write your greatest story. Enjoy every single second of your special day, celebrate with those you love, and let yourself feel truly appreciated!",
+  "🌟 A warm and heartfelt Happy Birthday to you! May this upcoming year grant you peace of mind, sharp focus, vibrant health, and unforgettable joy. You deserve the absolute best!"
+];
+
+export function getBirthdayCountdown(birthdayDate: string): {
+  diffDays: number;
+  isToday: boolean;
+  isUpcomingSoon: boolean;
+  daysUntil: number;
+  nextAge?: number;
+  formattedDate: string;
+  confirmedDayName: string;
+  wishMessage: string;
+} {
+  if (!birthdayDate) {
+    return {
+      diffDays: -1,
+      isToday: false,
+      isUpcomingSoon: false,
+      daysUntil: -1,
+      formattedDate: 'Not set',
+      confirmedDayName: '',
+      wishMessage: ''
+    };
+  }
+
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+
+  const [bYear, bMonth, bDay] = birthdayDate.split('-').map(Number);
+  const thisYear = today.getFullYear();
+
+  // Target birthday this year
+  let target = new Date(thisYear, bMonth - 1, bDay, 12, 0, 0);
+  
+  // If already passed this year, look at next year
+  if (target.getTime() < today.getTime() && !(target.getMonth() === today.getMonth() && target.getDate() === today.getDate())) {
+    target = new Date(thisYear + 1, bMonth - 1, bDay, 12, 0, 0);
+  }
+
+  const isToday = today.getMonth() === (bMonth - 1) && today.getDate() === bDay;
+  const diffTime = target.getTime() - today.getTime();
+  const daysUntil = isToday ? 0 : Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const diffDays = daysUntil;
+  const isUpcomingSoon = daysUntil > 0 && daysUntil <= 7;
+
+  const nextAge = bYear ? target.getFullYear() - bYear : undefined;
+  const confirmedDayName = getConfirmedDayName(`${target.getFullYear()}-${String(bMonth).padStart(2, '0')}-${String(bDay).padStart(2, '0')}`);
+  const monthName = target.toLocaleDateString('en-US', { month: 'long' });
+  const formattedDate = `${monthName} ${bDay}`;
+
+  // Pick wish
+  const wishMessage = WARM_BIRTHDAY_WISHES[(bDay || 1) % WARM_BIRTHDAY_WISHES.length];
+
+  return {
+    diffDays,
+    isToday,
+    isUpcomingSoon,
+    daysUntil,
+    nextAge,
+    formattedDate,
+    confirmedDayName,
+    wishMessage
+  };
+}
+
+// ==========================================
+// INSTITUTION ATTENDANCE TRACKER DEFAULTS
+// ==========================================
+
+export const DEFAULT_ATTENDANCE_CONFIG: InstitutionAttendanceConfig = {
+  institutionType: 'college',
+  institutionName: 'Campus / College',
+  workingDaysMode: 'weekly',
+  daysPerWeek: 5, // 5 days a week (Mon-Fri)
+  workingDaysPerMonth: 22,
+  totalWorkingDays: 90,
+  conductedDays: 45,
+  attendedDays: 38,
+  leaveDays: 7,
+  attendancePercentage: 84.4, // (38 / 45) * 100
+  lastWorkingDayAttended: '2026-09-12',
+  checkInLogs: [
+    {
+      date: '2026-09-12',
+      attended: true,
+      calculatedPercentage: 84.4,
+      note: 'Attended full session',
+      timestamp: Date.now() - 86400000 * 2
+    },
+    {
+      date: '2026-09-11',
+      attended: true,
+      calculatedPercentage: 84.1,
+      note: 'Attended lab & lectures',
+      timestamp: Date.now() - 86400000 * 3
+    },
+    {
+      date: '2026-09-10',
+      attended: false,
+      calculatedPercentage: 83.7,
+      note: 'Medical appointment leave',
+      timestamp: Date.now() - 86400000 * 4
+    }
+  ]
+};
+
+// ==========================================
+// MOTIVATIONAL "DAILY SMALL WIN" MESSAGES
+// ==========================================
+
+export const DAILY_SMALL_WINS = [
+  "Daily Small Win: Massive respect! Every assignment finished is momentum gained towards your dream career.",
+  "Daily Small Win: Boom! Task crushed. Consistency is the secret sauce that separates high achievers.",
+  "Daily Small Win: Proud of you! Checking off milestones clears mental clutter and keeps you in full control.",
+  "Daily Small Win: Great job! Small daily wins compound into unstoppable academic excellence.",
+  "Daily Small Win: You showed up, put in the focus, and finished what you started. Keep that energy going!",
+  "Daily Small Win: One step closer to mastery. Take a quick stretch and acknowledge your steady progress."
+];
+
+export function getRandomSmallWin(): string {
+  const index = Math.floor(Math.random() * DAILY_SMALL_WINS.length);
+  return DAILY_SMALL_WINS[index];
+}
+
+// ==========================================
+// CUSTOM REMINDER TIMING FORMATTER
+// ==========================================
+
+export function formatCustomReminderTiming(timing: CustomReminderTiming): string {
+  const { value, unit } = timing;
+  if (value === 1) {
+    if (unit === 'hours') return '1 Hour before';
+    if (unit === 'days') return '1 Day before';
+    if (unit === 'months') return '1 Month before';
+  }
+  const unitLabel = unit.charAt(0).toUpperCase() + unit.slice(1);
+  return `${value} ${unitLabel} before`;
+}
+
+// ==========================================
+// BIRTHDAY HELPERS
+// ==========================================
+
+export function getDaysUntilBirthday(birthdayDateStr: string): {
+  daysRemaining: number;
+  isToday: boolean;
+  nextBirthdayDate: Date | null;
+  formattedDisplay: string;
+} {
+  if (!birthdayDateStr) {
+    return { daysRemaining: -1, isToday: false, nextBirthdayDate: null, formattedDisplay: 'Not set' };
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const parts = birthdayDateStr.split('-').map(Number);
+  if (parts.length < 3 || isNaN(parts[1]) || isNaN(parts[2])) {
+    return { daysRemaining: -1, isToday: false, nextBirthdayDate: null, formattedDisplay: 'Invalid date' };
+  }
+
+  const birthMonth = parts[1] - 1;
+  const birthDay = parts[2];
+
+  let nextYear = today.getFullYear();
+  let candidate = new Date(nextYear, birthMonth, birthDay);
+  candidate.setHours(0, 0, 0, 0);
+
+  if (candidate.getTime() < today.getTime()) {
+    nextYear += 1;
+    candidate = new Date(nextYear, birthMonth, birthDay);
+    candidate.setHours(0, 0, 0, 0);
+  }
+
+  const diffMs = candidate.getTime() - today.getTime();
+  const daysRemaining = Math.round(diffMs / (1000 * 60 * 60 * 24));
+  const isToday = daysRemaining === 0;
+
+  const monthNames = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const formattedDisplay = isToday 
+    ? "Today! 🎉" 
+    : daysRemaining === 1 
+    ? "Tomorrow! 🎂" 
+    : `in ${daysRemaining} days (${monthNames[birthMonth]} ${birthDay})`;
+
+  return {
+    daysRemaining,
+    isToday,
+    nextBirthdayDate: candidate,
+    formattedDisplay
+  };
+}
+
+export function isBirthdayToday(birthdayDateStr: string): boolean {
+  return getDaysUntilBirthday(birthdayDateStr).isToday;
+}
+
 
 

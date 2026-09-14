@@ -30,7 +30,8 @@ import {
   formatHolidayDate, 
   getHolidayCountdown, 
   getHolidaysComingInDays, 
-  DEFAULT_HOLIDAYS 
+  DEFAULT_HOLIDAYS,
+  getConfirmedDayName
 } from '../utils/helpers';
 import { playSuccessChime } from '../utils/audio';
 
@@ -390,16 +391,23 @@ export const HolidayReminderTracker: React.FC<HolidayReminderTrackerProps> = ({
                 <h3 className="text-xl sm:text-3xl font-extrabold font-classic tracking-tight text-white">
                   {nearestHoliday.holiday.name}
                 </h3>
-                <p className="text-xs sm:text-sm text-purple-200 font-medium mt-1 flex items-center gap-2 flex-wrap">
-                  <span className="flex items-center gap-1">
+                <div className="flex items-center gap-2 flex-wrap mt-2">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-xl bg-amber-400 text-purple-950 text-xs font-black shadow-xs">
+                    <span>📅 Day:</span>
+                    <span>{getConfirmedDayName(nearestHoliday.holiday.startDate)}</span>
+                    {nearestHoliday.holiday.endDate && nearestHoliday.holiday.endDate !== nearestHoliday.holiday.startDate && (
+                      <span> to {getConfirmedDayName(nearestHoliday.holiday.endDate)}</span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-1 text-xs sm:text-sm text-purple-200 font-medium">
                     <CalendarDays className="w-4 h-4 text-amber-300" />
                     <strong>{nearestHoliday.countdown.relativeDateRange}</strong>
                   </span>
-                  <span>•</span>
-                  <span className="text-amber-300 font-bold">
-                    {nearestHoliday.holiday.totalDays} {nearestHoliday.holiday.totalDays === 1 ? 'Day' : 'Days'} Duration
+                  <span className="text-purple-300">•</span>
+                  <span className="text-amber-300 font-bold text-xs sm:text-sm">
+                    {nearestHoliday.holiday.totalDays} {nearestHoliday.holiday.totalDays === 1 ? 'Day' : 'Days'} Break
                   </span>
-                </p>
+                </div>
               </div>
 
               {nearestHoliday.holiday.description && (
@@ -629,10 +637,15 @@ export const HolidayReminderTracker: React.FC<HolidayReminderTrackerProps> = ({
                   <h4 className="text-sm font-bold text-purple-950 line-clamp-1">
                     {h.name}
                   </h4>
-                  <div className="flex items-center gap-2 text-xs font-semibold text-purple-800">
-                    <Calendar className="w-3.5 h-3.5 text-purple-600" />
-                    <span>{c.relativeDateRange}</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-100 text-purple-900 font-bold">
+                  <div className="flex items-center gap-2 text-xs font-semibold text-purple-800 flex-wrap">
+                    <span className="px-2 py-0.5 rounded-md bg-purple-100 text-purple-950 font-bold text-[10px]">
+                      📅 {getConfirmedDayName(h.startDate)}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <Calendar className="w-3.5 h-3.5 text-purple-600" />
+                      <span>{c.relativeDateRange}</span>
+                    </div>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 font-bold">
                       {h.totalDays} {h.totalDays === 1 ? 'day' : 'days break'}
                     </span>
                   </div>

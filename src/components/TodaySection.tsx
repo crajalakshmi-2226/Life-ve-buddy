@@ -201,22 +201,22 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
       </div>
 
       {/* Section Title & Navigation Actions */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
           <span className="text-xl">✨</span>
           <h3 className="text-base sm:text-lg font-bold font-classic text-purple-950">
-            Daily Focus & Mindset
+            Today at a Glance
           </h3>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {onOpenExamSchedule && (
             <button
               type="button"
               onClick={onOpenExamSchedule}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs active:scale-95"
             >
-              <GraduationCap className="w-3.5 h-3.5" />
+              <GraduationCap className="w-4 h-4 text-purple-700" />
               <span>Exams</span>
             </button>
           )}
@@ -225,9 +225,9 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
             <button
               type="button"
               onClick={onOpenClassSchedule}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs active:scale-95"
             >
-              <BookOpen className="w-3.5 h-3.5" />
+              <BookOpen className="w-4 h-4 text-purple-700" />
               <span>Classes</span>
             </button>
           )}
@@ -236,9 +236,9 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
             <button
               type="button"
               onClick={onOpenStretchRelief}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 min-h-[44px] rounded-xl text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 transition-all cursor-pointer shadow-2xs active:scale-95"
             >
-              <span className="animate-bounce">🧘</span>
+              <span className="animate-bounce text-base">🧘</span>
               <span>Body Stretch</span>
             </button>
           )}
@@ -495,8 +495,17 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
         </div>
       )}
 
-      {/* Today's Inputs Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* SECTION: Daily Focus & Mindset (Organized below alerts, warning cards, and inspiration) */}
+      <div className="pt-3 border-t border-purple-100/90 space-y-3">
+        <div className="flex items-center gap-2">
+          <span className="text-lg">🎯</span>
+          <h3 className="text-base sm:text-lg font-bold font-classic text-purple-950">
+            Daily Focus & Mindset
+          </h3>
+        </div>
+
+        {/* Today's Inputs Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Focus Word Input & Custom Word Adder */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
@@ -601,6 +610,7 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
             )}
           </div>
         </div>
+      </div>
       </div>
     </section>
   );

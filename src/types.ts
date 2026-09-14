@@ -142,6 +142,7 @@ export interface ExamItem {
   checklist?: ExamChecklistItem[];
   targetScore?: string;
   notes?: string;
+  reminderTiming?: CustomReminderTiming;
 }
 
 // ==========================================
@@ -364,6 +365,80 @@ export interface HolidayReminderConfig {
   browserNotification: boolean;
   showOnDashboard: boolean;
 }
+
+// ==========================================
+// CUSTOM REMINDER TIMING (HOURS / DAYS / MONTHS)
+// ==========================================
+
+export type ReminderTimingUnit = 'hours' | 'days' | 'months';
+
+export interface CustomReminderTiming {
+  value: number;
+  unit: ReminderTimingUnit;
+}
+
+// ==========================================
+// BIRTHDAY REMINDER TYPES
+// ==========================================
+
+export interface BirthdayData {
+  birthdayDate: string; // YYYY-MM-DD
+  userName?: string;
+  wishesEnabled: boolean;
+  reminderTiming: CustomReminderTiming;
+  customWishNote?: string;
+  lastCelebratedYear?: number;
+}
+
+// ==========================================
+// INSTITUTION ATTENDANCE TRACKER TYPES
+// ==========================================
+
+export type InstitutionType = 'college' | 'office' | 'school';
+
+export interface AttendanceDailyCheckIn {
+  date: string; // YYYY-MM-DD
+  attended: boolean; // true = Yes (Present), false = No (Leave/Absence)
+  isHoliday?: boolean;
+  note?: string;
+  calculatedPercentage: number;
+  timestamp: number;
+}
+
+export interface InstitutionAttendanceConfig {
+  institutionType: InstitutionType;
+  institutionName: string;
+  workingDaysMode: 'weekly' | 'monthly' | 'total'; // e.g. 5 days/week or 22 days/month or 90 total days
+  daysPerWeek: number; // e.g. 5 or 6 days/week
+  workingDaysPerMonth: number; // e.g. 22
+  totalWorkingDays: number; // e.g. 90
+  conductedDays: number; // How many working days conducted so far
+  attendedDays: number; // How many attended
+  leaveDays: number; // How many leaves taken
+  attendancePercentage: number; // automatically calculated: (attendedDays / conductedDays) * 100
+  lastCheckInDate?: string; // YYYY-MM-DD
+  lastWorkingDayAttended?: string; // e.g. "2026-09-12"
+  checkInLogs: AttendanceDailyCheckIn[];
+}
+
+// ==========================================
+// UNIFIED HISTORY PAGE RECORD TYPES
+// ==========================================
+
+export type HistoryCategory = 'All' | 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments';
+
+export interface HistoryRecordItem {
+  id: string;
+  category: 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments';
+  title: string;
+  date: string;
+  status: string;
+  details?: string;
+  badge?: string;
+  colorTheme?: string;
+  timestamp: number;
+}
+
 
 
 

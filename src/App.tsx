@@ -18,6 +18,9 @@ import { FocusTimerModal } from './components/FocusTimerModal';
 import { BodyStretchRelief } from './components/BodyStretchRelief';
 import { AndroidFrame } from './components/AndroidFrame';
 import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystemContainer';
+import { BirthdayModal } from './components/BirthdayModal';
+import { HistoryPage } from './components/HistoryPage';
+import { InstitutionAttendanceTracker } from './components/InstitutionAttendanceTracker';
 import { 
   TodayData, 
   LabData, 
@@ -29,7 +32,10 @@ import {
   HolidayItem,
   StudentAcademicProfile, 
   AlertNotificationItem, 
-  ActionRecommendation 
+  ActionRecommendation,
+  BirthdayData,
+  InstitutionAttendanceConfig,
+  HistoryRecordItem
 } from './types';
 import { fetchDailyQuote } from './utils/quotes';
 import { getTodayDateString, DEFAULT_EXAMS, getExamCountdown, DEFAULT_HOLIDAYS, getHolidayCountdown } from './utils/helpers';
@@ -41,7 +47,7 @@ import {
   recomputeOverallAttendance
 } from './utils/aiRiskEngine';
 import { playSuccessChime } from './utils/audio';
-import { Check, Info, ShieldCheck, Sparkles } from 'lucide-react';
+import { Check, Info, ShieldCheck, Sparkles, ArrowLeft, Palmtree, History, Cake } from 'lucide-react';
 
 const DEFAULT_HABITS: Habit[] = [
   { id: 1, name: "Drink 2L Water", category: "Health", streak: 3, doneToday: false, isCustom: false },
@@ -211,9 +217,96 @@ export default function App() {
   const [isAndroidView, setIsAndroidView] = useState<boolean>(false);
   const [isTimerOpen, setIsTimerOpen] = useState<boolean>(false);
   const [isStretchOpen, setIsStretchOpen] = useState<boolean>(false);
+  const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'holidays' | 'history'>('dashboard');
+
+  const [birthdayData, setBirthdayData] = useState<BirthdayData>(() => {
+    const saved = localStorage.getItem("birthdayData");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
+    }
+    return {
+      birthdayDate: "",
+      userName: "Alex",
+      wishesEnabled: true,
+      reminderTiming: { value: 1, unit: 'days' },
+      customWishNote: "Wishing you an extraordinary year of learning, breakthrough achievements, and joy! 🎂🎉"
+    };
+  });
+
+  const [attendanceConfig, setAttendanceConfig] = useState<InstitutionAttendanceConfig>(() => {
+    const saved = localStorage.getItem("attendanceConfig");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
+    }
+    return {
+      institutionType: 'college',
+      institutionName: "Engineering & Science Institute",
+      workingDaysMode: 'total',
+      daysPerWeek: 5,
+      workingDaysPerMonth: 22,
+      totalWorkingDays: 90,
+      conductedDays: 45,
+      attendedDays: 39,
+      leaveDays: 6,
+      attendancePercentage: 86.7,
+      checkInLogs: []
+    };
+  });
+
+  const [historyRecords, setHistoryRecords] = useState<HistoryRecordItem[]>(() => {
+    const saved = localStorage.getItem("historyRecords");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
+    }
+    return [
+      {
+        id: "hist_1",
+        category: "Assignments",
+        title: "Literature Review & Problem Statement",
+        date: getTodayDateString(),
+        status: "Completed",
+        details: "Finalized references and problem formulation with faculty advisor.",
+        timestamp: Date.now() - 86400000 * 2
+      },
+      {
+        id: "hist_2",
+        category: "Attendance & Leaves",
+        title: "Daily Attendance Check-in",
+        date: getTodayDateString(),
+        status: "Present",
+        details: "Attended full working day classes. Maintained >85% attendance.",
+        timestamp: Date.now() - 86400000
+      },
+      {
+        id: "hist_3",
+        category: "Habits",
+        title: "1 Hour Deep Study",
+        date: getTodayDateString(),
+        status: "Done",
+        details: "Completed 5-day study consistency streak.",
+        timestamp: Date.now() - 86400000 * 3
+      }
+    ];
+  });
+
   const [notifPermission, setNotifPermission] = useState<'default' | 'granted' | 'denied' | 'unsupported'>('default');
   const [notifDismissed, setNotifDismissed] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Log a record into centralized history
+  const logHistoryRecord = useCallback((title: string, category: HistoryRecordItem['category'], status: string, details?: string) => {
+    const newItem: HistoryRecordItem = {
+      id: `hist_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      category,
+      title,
+      date: getTodayDateString(),
+      status,
+      details,
+      timestamp: Date.now()
+    };
+    setHistoryRecords(prev => [newItem, ...prev]);
+  }, []);
 
   // Show in-app toast
   const showToast = useCallback((title: string, body: string, type: 'info' | 'success' | 'alert' = 'info') => {
@@ -383,6 +476,18 @@ export default function App() {
     localStorage.setItem("soundEnabled", String(soundEnabled));
   }, [soundEnabled]);
 
+  useEffect(() => {
+    localStorage.setItem("birthdayData", JSON.stringify(birthdayData));
+  }, [birthdayData]);
+
+  useEffect(() => {
+    localStorage.setItem("attendanceConfig", JSON.stringify(attendanceConfig));
+  }, [attendanceConfig]);
+
+  useEffect(() => {
+    localStorage.setItem("historyRecords", JSON.stringify(historyRecords));
+  }, [historyRecords]);
+
   // Refresh quote handler
   const handleRefreshQuote = () => {
     setLoadingQuote(true);
@@ -498,7 +603,10 @@ export default function App() {
           onOpenSchedule={scrollToSchedule}
           onOpenExams={scrollToExams}
           onOpenAlerts={scrollToAlerts}
-          onOpenHolidays={scrollToHolidays}
+          onOpenHolidays={() => setActiveTab('holidays')}
+          onOpenBirthday={() => setIsBirthdayModalOpen(true)}
+          activeTab={activeTab}
+          onChangeTab={(tab) => setActiveTab(tab)}
           upcomingExamsCount={upcomingExamsCount}
           upcomingHolidaysCount={upcomingHolidaysCount}
           unreadAlertsCount={unreadAlertsCount}
@@ -519,124 +627,196 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
-          {/* SECTION 1: Today Section */}
-          <TodaySection
-            quote={quote}
-            loadingQuote={loadingQuote}
-            onRefreshQuote={handleRefreshQuote}
-            todayData={todayData}
-            onUpdateTodayData={(partial) => setTodayData(prev => ({ ...prev, ...partial }))}
-            labData={labData}
-            projectData={projectData}
-            classPeriods={classPeriods}
-            exams={exams}
-            holidays={holidays}
-            soundEnabled={soundEnabled}
-            onOpenStretchRelief={() => setIsStretchOpen(true)}
-            onOpenClassSchedule={scrollToSchedule}
-            onOpenExamSchedule={scrollToExams}
-            onOpenAlerts={scrollToAlerts}
-            onOpenHolidays={scrollToHolidays}
-            criticalAlertsCount={criticalAlertsCount}
-          />
-
-          {/* SECTION 2: AI-BASED ALERT SYSTEM (Continuous Data Monitoring, Risk Detection & Simulator) */}
-          <div ref={aiAlertSectionRef}>
-            <AIAlertSystemContainer
-              profile={studentProfile}
-              alerts={studentAlerts}
-              recommendations={studentRecommendations}
-              onUpdateProfile={handleUpdateStudentProfile}
-              onUpdateAlerts={setStudentAlerts}
-              onUpdateRecommendations={setStudentRecommendations}
-              soundEnabled={soundEnabled}
-              onToast={showToast}
-            />
-          </div>
-
-          {/* SECTION 3: Holiday & Vacation Countdown Reminder Tracker */}
-          <div ref={holidaySectionRef}>
-            <HolidayReminderTracker
-              holidays={holidays}
-              onUpdateHolidays={setHolidays}
-              reminderThresholdDays={holidayReminderThreshold}
-              onUpdateReminderThreshold={setHolidayReminderThreshold}
-              soundEnabled={soundEnabled}
-              onToast={showToast}
-            />
-          </div>
-
-          {/* SECTION 4: Exam Schedule & Daily Countdown Tracker */}
-          <div ref={examSectionRef}>
-            <ExamScheduleTracker
-              exams={exams}
-              onUpdateExams={setExams}
-              soundEnabled={soundEnabled}
-              onToast={showToast}
-            />
-          </div>
-
-          {/* SECTION 5: Custom Class Time Periods & Schedule */}
-          <div ref={scheduleSectionRef}>
-            <ClassScheduleTracker
-              periods={classPeriods}
-              onUpdatePeriods={setClassPeriods}
-              soundEnabled={soundEnabled}
-              onToast={showToast}
-            />
-          </div>
-
-          {/* SECTION 3: Lab & Project Tracker */}
-          <section className="bg-white rounded-3xl p-5 sm:p-7 border border-purple-200/90 shadow-sm transition-all space-y-5">
-            <div className="flex items-center justify-between border-b border-purple-100 pb-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl shadow-xs border border-purple-200">
-                  🧪
-                </div>
-                <div>
-                  <h2 className="text-lg sm:text-xl font-bold font-classic text-purple-950">
-                    Academic Trackers & Milestones
-                  </h2>
-                  <p className="text-xs text-purple-700/80 font-medium">
-                    Manage lab preparations, safety equipment, and major semester deliverables
-                  </p>
+          {/* TAB 1: DEDICATED HOLIDAY PAGE */}
+          {activeTab === 'holidays' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between p-3 sm:p-4 bg-white rounded-2xl border border-purple-200/90 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                >
+                  <ArrowLeft className="w-4 h-4 text-purple-700" />
+                  <span>Back to Dashboard</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-amber-950 bg-amber-100 px-3 py-1.5 rounded-xl border border-amber-300 shadow-2xs flex items-center gap-1.5">
+                    <Palmtree className="w-4 h-4 text-amber-700" />
+                    <span className="hidden sm:inline">Dedicated</span> Holiday Hub
+                  </span>
                 </div>
               </div>
-            </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Sub-card 1: Lab Reminder */}
-              <LabTracker
+              <div ref={holidaySectionRef}>
+                <HolidayReminderTracker
+                  holidays={holidays}
+                  onUpdateHolidays={setHolidays}
+                  reminderThresholdDays={holidayReminderThreshold}
+                  onUpdateReminderThreshold={setHolidayReminderThreshold}
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                />
+              </div>
+            </div>
+          )}
+
+          {/* TAB 2: DEDICATED CENTRALIZED HISTORY PAGE */}
+          {activeTab === 'history' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between p-3 sm:p-4 bg-white rounded-2xl border border-purple-200/90 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                >
+                  <ArrowLeft className="w-4 h-4 text-purple-700" />
+                  <span>Back to Dashboard</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-indigo-950 bg-indigo-100 px-3 py-1.5 rounded-xl border border-indigo-300 shadow-2xs flex items-center gap-1.5">
+                    <History className="w-4 h-4 text-indigo-700" />
+                    <span className="hidden sm:inline">Centralized</span> Past Records & History
+                  </span>
+                </div>
+              </div>
+
+              <HistoryPage
+                records={historyRecords}
+                onClearHistory={() => {
+                  setHistoryRecords([]);
+                  showToast("History Cleared", "All logged records have been reset.", "info");
+                }}
+                onToast={showToast}
+              />
+            </div>
+          )}
+
+          {/* TAB 3: DASHBOARD VIEW */}
+          {activeTab === 'dashboard' && (
+            <>
+              {/* SECTION 1: Today Section */}
+              <TodaySection
+                quote={quote}
+                loadingQuote={loadingQuote}
+                onRefreshQuote={handleRefreshQuote}
+                todayData={todayData}
+                onUpdateTodayData={(partial) => setTodayData(prev => ({ ...prev, ...partial }))}
                 labData={labData}
-                onUpdateLabData={setLabData}
+                projectData={projectData}
+                classPeriods={classPeriods}
+                exams={exams}
+                holidays={holidays}
+                soundEnabled={soundEnabled}
+                onOpenStretchRelief={() => setIsStretchOpen(true)}
+                onOpenClassSchedule={scrollToSchedule}
+                onOpenExamSchedule={scrollToExams}
+                onOpenAlerts={scrollToAlerts}
+                onOpenHolidays={() => setActiveTab('holidays')}
+                criticalAlertsCount={criticalAlertsCount}
+              />
+
+              {/* SECTION 2: Institutional Attendance Tracker (Days Can Change By User & Daily Prompt) */}
+              <InstitutionAttendanceTracker
+                config={attendanceConfig}
+                onUpdateConfig={(newCfg) => {
+                  setAttendanceConfig(newCfg);
+                  handleUpdateStudentProfile({ overallAttendance: newCfg.attendancePercentage });
+                }}
+                soundEnabled={soundEnabled}
+                onToast={showToast}
+                onLogHistoryRecord={logHistoryRecord}
+              />
+
+              {/* SECTION 3: AI-BASED ALERT SYSTEM (Continuous Data Monitoring, Risk Detection & Simulator) */}
+              <div ref={aiAlertSectionRef}>
+                <AIAlertSystemContainer
+                  profile={studentProfile}
+                  alerts={studentAlerts}
+                  recommendations={studentRecommendations}
+                  onUpdateProfile={handleUpdateStudentProfile}
+                  onUpdateAlerts={setStudentAlerts}
+                  onUpdateRecommendations={setStudentRecommendations}
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                />
+              </div>
+
+              {/* SECTION 4: Exam Schedule & Daily Countdown Tracker */}
+              <div ref={examSectionRef}>
+                <ExamScheduleTracker
+                  exams={exams}
+                  onUpdateExams={setExams}
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                />
+              </div>
+
+              {/* SECTION 5: Custom Class Time Periods & Schedule */}
+              <div ref={scheduleSectionRef}>
+                <ClassScheduleTracker
+                  periods={classPeriods}
+                  onUpdatePeriods={setClassPeriods}
+                  soundEnabled={soundEnabled}
+                  onToast={showToast}
+                />
+              </div>
+
+              {/* SECTION 6: Lab & Project Tracker */}
+              <section className="bg-white rounded-3xl p-5 sm:p-7 border border-purple-200/90 shadow-sm transition-all space-y-5">
+                <div className="flex items-center justify-between border-b border-purple-100 pb-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl shadow-xs border border-purple-200">
+                      🧪
+                    </div>
+                    <div>
+                      <h2 className="text-lg sm:text-xl font-bold font-classic text-purple-950">
+                        Academic Trackers & Milestones
+                      </h2>
+                      <p className="text-xs text-purple-700/80 font-medium">
+                        Manage lab preparations, safety equipment, and major semester deliverables
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                  {/* Sub-card 1: Lab Reminder */}
+                  <LabTracker
+                    labData={labData}
+                    onUpdateLabData={setLabData}
+                    soundEnabled={soundEnabled}
+                    onOpenStretchRelief={() => setIsStretchOpen(true)}
+                  />
+
+                  {/* Sub-card 2: Project Tracker */}
+                  <ProjectTracker
+                    projectData={projectData}
+                    onUpdateProjectData={setProjectData}
+                    soundEnabled={soundEnabled}
+                    onToast={showToast}
+                    onSetSmallWin={(win) => setTodayData(prev => ({ ...prev, smallWin: win }))}
+                    onLogHistory={(title, cat, stat, det) => logHistoryRecord(title, cat, stat, det)}
+                  />
+                </div>
+              </section>
+
+              {/* SECTION 7: Daily Habits & Streaks (with 7-day Recharts Line Chart) */}
+              <HabitsSection
+                habits={habits}
+                onToggleHabit={handleToggleHabit}
+                onAddHabit={handleAddHabit}
+                onDeleteHabit={handleDeleteHabit}
                 soundEnabled={soundEnabled}
                 onOpenStretchRelief={() => setIsStretchOpen(true)}
               />
 
-              {/* Sub-card 2: Project Tracker */}
-              <ProjectTracker
-                projectData={projectData}
-                onUpdateProjectData={setProjectData}
+              {/* SECTION 8: Complaints & Issues Box (Private / Owner-Only Access) */}
+              <ComplaintsBox
                 soundEnabled={soundEnabled}
+                onToast={showToast}
               />
-            </div>
-          </section>
-
-          {/* SECTION 4: Daily Habits & Streaks (with 7-day Recharts Line Chart) */}
-          <HabitsSection
-            habits={habits}
-            onToggleHabit={handleToggleHabit}
-            onAddHabit={handleAddHabit}
-            onDeleteHabit={handleDeleteHabit}
-            soundEnabled={soundEnabled}
-            onOpenStretchRelief={() => setIsStretchOpen(true)}
-          />
-
-          {/* SECTION 5: Complaints & Issues Box (Private / Owner-Only Access) */}
-          <ComplaintsBox
-            soundEnabled={soundEnabled}
-            onToast={showToast}
-          />
+            </>
+          )}
 
           {/* Footer Note */}
           <footer className="text-center pt-4 pb-8 text-xs text-purple-400 space-y-1">
@@ -667,6 +847,20 @@ export default function App() {
           isOpen={isStretchOpen}
           onClose={() => setIsStretchOpen(false)}
           soundEnabled={soundEnabled}
+        />
+
+        {/* Birthday Celebrations & Reminder Modal */}
+        <BirthdayModal
+          isOpen={isBirthdayModalOpen}
+          onClose={() => setIsBirthdayModalOpen(false)}
+          birthdayData={birthdayData}
+          userName={todayData.userName || 'Alex'}
+          onSaveBirthday={(newBday) => {
+            setBirthdayData(newBday);
+            logHistoryRecord(`Birthday Reminder Configured: ${newBday.birthdayDate}`, 'Habits', 'Configured', `Remind advance: ${newBday.reminderTiming.value} ${newBday.reminderTiming.unit}`);
+          }}
+          soundEnabled={soundEnabled}
+          onToast={showToast}
         />
 
         {/* Floating Toast Notification Center */}

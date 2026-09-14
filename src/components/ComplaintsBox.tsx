@@ -27,7 +27,7 @@ interface ComplaintsBoxProps {
 }
 
 const OWNER_PASSCODE = 'owner2026';
-const OWNER_EMAIL = 'gatekeepershield22@gmail.com';
+const OWNER_EMAIL = 'c.rajalakshmi12259@gmail.com';
 
 const INITIAL_DEMO_COMPLAINTS: ComplaintReport[] = [
   {
@@ -121,17 +121,33 @@ export const ComplaintsBox: React.FC<ComplaintsBoxProps> = ({
     };
 
     setComplaints(prev => [newComplaint, ...prev]);
+    
+    // Prepare direct mailto URL so every complaint is forwarded directly to c.rajalakshmi12259@gmail.com
+    const subjectLine = `[LifeBuddy Report - ${urgency}] ${category}: ${title.trim()}`;
+    const emailBody = `LifeBuddy Issue Report\n============================\nRecipient / Owner: ${OWNER_EMAIL}\nCategory: ${category}\nUrgency: ${urgency}\nSubmitted At: ${new Date().toLocaleString()}\nSender Contact: ${userEmail.trim() || 'Anonymous Student'}\n\nTitle: ${title.trim()}\n\nDetailed Description:\n${description.trim()}\n\nDevice: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'Web Applet'}\n============================`;
+    const mailtoUrl = `mailto:${OWNER_EMAIL}?subject=${encodeURIComponent(subjectLine)}&body=${encodeURIComponent(emailBody)}`;
+
+    try {
+      window.open(mailtoUrl, '_blank');
+    } catch (e) {
+      console.warn('Mailto popup prevented', e);
+    }
+
     setTitle('');
     setDescription('');
     setUserEmail('');
     setSubmittedSuccess(true);
 
     if (soundEnabled) playSuccessChime();
-    onToast('🔒 Issue Sent Privately', 'Your report was securely submitted directly to the owner/admin portal.', 'success');
+    onToast(
+      '📬 Report Sent to Owner',
+      `Your complaint was forwarded directly to ${OWNER_EMAIL} and archived.`,
+      'success'
+    );
 
     setTimeout(() => {
       setSubmittedSuccess(false);
-    }, 5000);
+    }, 8000);
   };
 
   // Owner Unlock Verification
@@ -569,11 +585,19 @@ export const ComplaintsBox: React.FC<ComplaintsBoxProps> = ({
           </div>
 
           {/* Privacy Note */}
-          <div className="p-3 rounded-2xl bg-purple-50/70 border border-purple-200/80 flex items-start gap-2.5 text-[11px] text-purple-800">
-            <Lock className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
-            <p className="leading-relaxed">
-              <strong>Owner-Only Privacy:</strong> All feedback is sent directly to the owner's private dashboard. Other users cannot view your reports.
-            </p>
+          <div className="p-3.5 rounded-2xl bg-purple-50/90 border border-purple-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-[11px] text-purple-900">
+            <div className="flex items-start gap-2">
+              <Lock className="w-4 h-4 text-purple-600 flex-shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                <strong>Recipient & Owner:</strong> Every complaint is delivered directly to <span className="font-bold underline text-purple-950">c.rajalakshmi12259@gmail.com</span>. Private & confidential.
+              </p>
+            </div>
+            <a 
+              href={`mailto:${OWNER_EMAIL}?subject=${encodeURIComponent('[LifeBuddy] Quick Issue Report')}`}
+              className="inline-flex items-center gap-1 text-[11px] font-bold text-purple-700 hover:text-purple-950 underline self-start sm:self-auto whitespace-nowrap"
+            >
+              Direct Email Link ↗
+            </a>
           </div>
         </form>
       )}

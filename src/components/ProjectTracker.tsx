@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { FolderGit2, Edit3, Plus, Trash2, CheckCircle2, Circle, AlertCircle } from 'lucide-react';
+import { FolderGit2, Edit3, Plus, Trash2, CheckCircle2, Circle, AlertCircle, Sparkles, Trophy, X } from 'lucide-react';
 import { ProjectData, ProjectMilestone } from '../types';
 import { getProjectDeadlineInfo } from '../utils/helpers';
 import confetti from 'canvas-confetti';
@@ -9,6 +9,9 @@ interface ProjectTrackerProps {
   projectData: ProjectData;
   onUpdateProjectData: (data: ProjectData) => void;
   soundEnabled: boolean;
+  onToast?: (title: string, body: string, type?: 'info' | 'success' | 'alert') => void;
+  onSetSmallWin?: (winText: string) => void;
+  onLogHistory?: (title: string, category: 'Assignments', status: string, details?: string) => void;
 }
 
 const PRESET_MILESTONES = [
@@ -22,12 +25,16 @@ const PRESET_MILESTONES = [
 export const ProjectTracker: React.FC<ProjectTrackerProps> = ({
   projectData,
   onUpdateProjectData,
-  soundEnabled
+  soundEnabled,
+  onToast,
+  onSetSmallWin,
+  onLogHistory
 }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [nameInput, setNameInput] = useState(projectData.projectName || 'Final Year Project');
   const [deadlineInput, setDeadlineInput] = useState(projectData.deadlineDate || '');
   const [newTaskText, setNewTaskText] = useState('');
+  const [congratsNotice, setCongratsNotice] = useState<{ milestone: string; motivationalWin: string } | null>(null);
 
   const deadlineInfo = getProjectDeadlineInfo(projectData);
   const tasks = projectData.tasks || [];
@@ -45,7 +52,8 @@ export const ProjectTracker: React.FC<ProjectTrackerProps> = ({
   };
 
   const toggleTask = (taskId: number) => {
-    const wasCompleted = tasks.find(t => t.id === taskId)?.done;
+    const targetTask = tasks.find(t => t.id === taskId);
+    const wasCompleted = targetTask?.done;
     const newTasks = tasks.map(t => t.id === taskId ? { ...t, done: !t.done } : t);
     
     const newCompletedCount = newTasks.filter(t => t.done).length;
@@ -56,13 +64,31 @@ export const ProjectTracker: React.FC<ProjectTrackerProps> = ({
       tasks: newTasks
     });
 
-    if (!wasCompleted) {
+    if (!wasCompleted && targetTask) {
+      const motivation = "Momentum builds greatness! One focused victory at a time.";
+      setCongratsNotice({
+        milestone: targetTask.text,
+        motivationalWin: motivation
+      });
+
+      if (onSetSmallWin) {
+        onSetSmallWin(`Completed milestone: ${targetTask.text} 🎉`);
+      }
+
+      if (onToast) {
+        onToast("Congratulations 🎉", `Completed "${targetTask.text}"! Recorded as your Daily Small Win.`, "success");
+      }
+
+      if (onLogHistory) {
+        onLogHistory(targetTask.text, "Assignments", "Completed", `Ticked off milestone. Total progress: ${newPercent}%`);
+      }
+
       if (newPercent === 100) {
         if (soundEnabled) playStreakFanfare();
         try {
           confetti({
-            particleCount: 55,
-            spread: 75,
+            particleCount: 75,
+            spread: 85,
             origin: { y: 0.6 }
           });
         } catch (e) {
@@ -70,6 +96,15 @@ export const ProjectTracker: React.FC<ProjectTrackerProps> = ({
         }
       } else {
         if (soundEnabled) playSuccessChime();
+        try {
+          confetti({
+            particleCount: 40,
+            spread: 60,
+            origin: { y: 0.65 }
+          });
+        } catch (e) {
+          console.debug(e);
+        }
       }
     }
   };
@@ -207,6 +242,28 @@ export const ProjectTracker: React.FC<ProjectTrackerProps> = ({
               />
             </div>
           </div>
+
+          {/* Congratulations 🎉 & Daily Small Win Notice */}
+          {congratsNotice && (
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-emerald-600 to-teal-700 text-white shadow-xs space-y-1.5 animate-fadeIn relative">
+              <button
+                type="button"
+                onClick={() => setCongratsNotice(null)}
+                className="absolute top-2.5 right-2.5 text-emerald-200 hover:text-white p-0.5 rounded"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-2">
+                <span className="text-base">🎉</span>
+                <h4 className="text-xs font-bold font-classic">
+                  Congratulations! Finished "{congratsNotice.milestone}"!
+                </h4>
+              </div>
+              <p className="text-[11px] text-emerald-100 font-medium">
+                🌟 <strong>Daily Small Win:</strong> {congratsNotice.motivationalWin}
+              </p>
+            </div>
+          )}
 
           {/* Task List */}
           <div className="space-y-1.5 max-h-56 overflow-y-auto pr-0.5">
