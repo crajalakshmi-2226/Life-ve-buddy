@@ -140,19 +140,25 @@ export const AlertsFeed: React.FC<AlertsFeedProps> = ({
             </button>
           ))}
 
-          <span className="font-bold text-slate-500 text-[11px] ml-2">Category:</span>
-          {['All', 'Academic', 'Attendance', 'Deadline', 'Exam', 'Fee Payment', 'Project Review'].map(cat => (
+          <span className="font-bold text-slate-500 text-[11px] ml-2">Core Alert Conditions:</span>
+          {[
+            { id: 'All', label: 'All Alerts' },
+            { id: 'Academic', label: '1. Academic Risk' },
+            { id: 'Exam', label: '2. Early Warning' },
+            { id: 'Attendance', label: '3. Attendance' },
+            { id: 'Fee Payment', label: '4. Fee / Deadline' }
+          ].map(cat => (
             <button
-              key={cat}
+              key={cat.id}
               type="button"
-              onClick={() => setCategoryFilter(cat)}
+              onClick={() => setCategoryFilter(cat.id)}
               className={`px-2.5 py-0.5 rounded-lg font-bold text-[11px] transition-all cursor-pointer ${
-                categoryFilter === cat
-                  ? 'bg-purple-700 text-white'
+                categoryFilter === cat.id
+                  ? 'bg-purple-700 text-white shadow-2xs'
                   : 'bg-purple-50 text-purple-800 hover:bg-purple-100 border border-purple-200'
               }`}
             >
-              {cat}
+              {cat.label}
             </button>
           ))}
         </div>

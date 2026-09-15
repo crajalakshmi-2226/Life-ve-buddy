@@ -77,3 +77,74 @@ self.addEventListener('fetch', (event) => {
     })
   );
 });
+
+// ==========================================
+// SYSTEM-LEVEL NOTIFICATIONS & PUSH EVENTS
+// ==========================================
+
+// Handle messages from the client to trigger real notifications from SW
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'SHOW_NOTIFICATION') {
+    const { title, options } = event.data;
+    const notificationOptions = {
+      icon: '/pwa-192x192.png',
+      badge: '/pwa-192x192.png',
+      vibrate: [200, 100, 200],
+      requireInteraction: false,
+      tag: options?.tag || 'lifebuddy-alert',
+      renotify: true,
+      data: options?.data || { url: '/' },
+      ...options
+    };
+
+    self.registration.showNotification(title, notificationOptions);
+  }
+});
+
+// Handle real Push Events
+self.addEventListener('push', (event) => {
+  let data = { title: 'LifeBuddy Alert', body: 'You have a scheduled reminder.' };
+  if (event.data) {
+    try {
+      data = event.data.json();
+    } catch (e) {
+      data = { title: 'LifeBuddy Alert', body: event.data.text() };
+    }
+  }
+
+  const options = {
+    body: data.body,
+    icon: '/pwa-192x192.png',
+    badge: '/pwa-192x192.png',
+    vibrate: [200, 100, 200],
+    tag: data.tag || 'lifebuddy-push',
+    renotify: true,
+    data: { url: data.url || '/' }
+  };
+
+  event.waitUntil(
+    self.registration.showNotification(data.title, options)
+  );
+});
+
+// Open or focus the application window when the user taps a notification
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = (event.notification.data && event.notification.data.url) || '/';
+
+  event.waitUntil(
+    clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+      // Check if there is already a window open
+      for (const client of windowClients) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          return client.focus();
+        }
+      }
+      // If not open, open new window
+      if (clients.openWindow) {
+        return clients.openWindow(targetUrl);
+      }
+    })
+  );
+});
+

@@ -21,6 +21,7 @@ import { AndroidFrame } from './components/AndroidFrame';
 import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystemContainer';
 import { BirthdayModal } from './components/BirthdayModal';
 import { HistoryPage } from './components/HistoryPage';
+import { AboutMePage } from './components/AboutMePage';
 import { InstitutionAttendanceTracker } from './components/InstitutionAttendanceTracker';
 import { OfflineIndicator } from './components/OfflineIndicator';
 import { 
@@ -37,10 +38,13 @@ import {
   ActionRecommendation,
   BirthdayData,
   InstitutionAttendanceConfig,
-  HistoryRecordItem
+  HistoryRecordItem,
+  UserProfile,
+  AppTheme
 } from './types';
 import { fetchDailyQuote } from './utils/quotes';
-import { getTodayDateString, DEFAULT_EXAMS, getExamCountdown, DEFAULT_HOLIDAYS, getHolidayCountdown } from './utils/helpers';
+import { getTodayDateString, DEFAULT_EXAMS, getExamCountdown, DEFAULT_HOLIDAYS, getHolidayCountdown, isBirthdayToday } from './utils/helpers';
+import { sendSystemNotification } from './utils/notifications';
 import { 
   DEFAULT_STUDENT_PROFILE, 
   evaluateStudentRisk, 
@@ -223,7 +227,26 @@ export default function App() {
   const [isTimerOpen, setIsTimerOpen] = useState<boolean>(false);
   const [isStretchOpen, setIsStretchOpen] = useState<boolean>(false);
   const [isBirthdayModalOpen, setIsBirthdayModalOpen] = useState<boolean>(false);
-  const [activeTab, setActiveTab] = useState<'dashboard' | 'holidays' | 'history'>('dashboard');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'holidays' | 'history' | 'aboutme'>('dashboard');
+
+  const [userProfile, setUserProfile] = useState<UserProfile>(() => {
+    const saved = localStorage.getItem('user_profile_data');
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
+    }
+    return {
+      name: 'Alex',
+      hobby: 'Reading & Coding',
+      college: 'Engineering & Science Institute',
+      email: 'alex.student@campus.edu',
+      customFields: [],
+      theme: 'purple'
+    };
+  });
+
+  const [appTheme, setAppTheme] = useState<AppTheme>(() => {
+    return (localStorage.getItem('app_theme') as AppTheme) || 'purple';
+  });
 
   const [birthdayData, setBirthdayData] = useState<BirthdayData>(() => {
     const saved = localStorage.getItem("birthdayData");
@@ -517,6 +540,39 @@ export default function App() {
     localStorage.setItem("historyRecords", JSON.stringify(historyRecords));
   }, [historyRecords]);
 
+  useEffect(() => {
+    localStorage.setItem("user_profile_data", JSON.stringify(userProfile));
+  }, [userProfile]);
+
+  useEffect(() => {
+    localStorage.setItem("app_theme", appTheme);
+    document.documentElement.setAttribute('data-theme', appTheme);
+    if (appTheme === 'dark') {
+      document.documentElement.classList.add('dark');
+    } else {
+      document.documentElement.classList.remove('dark');
+    }
+  }, [appTheme]);
+
+  // Real System Notification for Birthday (with deduplication per year)
+  useEffect(() => {
+    if (!birthdayData.birthdayDate) return;
+    const currentYear = new Date().getFullYear();
+    const bdayKey = `bday_system_notif_sent_${currentYear}_${birthdayData.birthdayDate}`;
+
+    if (isBirthdayToday(birthdayData.birthdayDate)) {
+      if (!localStorage.getItem(bdayKey)) {
+        localStorage.setItem(bdayKey, 'sent');
+        sendSystemNotification({
+          title: `🎂 Happy Birthday, ${todayData.userName || userProfile.name || 'Alex'}! 🎉`,
+          body: birthdayData.customWishNote || "Wishing you an extraordinary year of learning, breakthrough achievements, and joy!",
+          tag: `birthday-${currentYear}`,
+          requireInteraction: true
+        });
+      }
+    }
+  }, [birthdayData.birthdayDate, todayData.userName, userProfile.name]);
+
   // Refresh quote handler
   const handleRefreshQuote = () => {
     setLoadingQuote(true);
@@ -616,13 +672,35 @@ export default function App() {
   const unreadAlertsCount = studentAlerts.filter(a => !a.isRead).length;
   const criticalAlertsCount = studentAlerts.filter(a => a.priority === 'Emergency' || a.priority === 'High' || a.riskLevel === 'Critical').length;
 
+  const getThemeClass = (theme: AppTheme) => {
+    switch (theme) {
+      case 'blue':
+        return 'bg-blue-50/50 text-slate-900';
+      case 'green':
+        return 'bg-emerald-50/50 text-slate-900';
+      case 'pink':
+        return 'bg-pink-50/50 text-slate-900';
+      case 'amber':
+        return 'bg-amber-50/50 text-slate-900';
+      case 'dark':
+        return 'bg-slate-950 text-slate-100';
+      case 'purple':
+      default:
+        return 'bg-[#faf5ff] text-slate-900';
+    }
+  };
+
   return (
     <AndroidFrame isAndroidView={isAndroidView}>
-      <div className="min-h-screen bg-[#faf5ff] text-slate-900 pb-28 sm:pb-32">
+      <div className={`min-h-screen ${getThemeClass(appTheme)} pb-28 sm:pb-32 transition-colors duration-300`}>
         {/* Floating Header */}
         <Header
-          userName={todayData.userName || 'Alex'}
-          onUpdateUserName={(name) => setTodayData(prev => ({ ...prev, userName: name }))}
+          userName={todayData.userName || userProfile.name || 'Alex'}
+          onUpdateUserName={(name) => {
+            setTodayData(prev => ({ ...prev, userName: name }));
+            setUserProfile(prev => ({ ...prev, name }));
+          }}
+          onOpenAboutMe={() => setActiveTab('aboutme')}
           soundEnabled={soundEnabled}
           onToggleSound={() => setSoundEnabled(!soundEnabled)}
           isAndroidView={isAndroidView}
@@ -656,6 +734,43 @@ export default function App() {
 
         {/* Main Content Area */}
         <main className="max-w-4xl mx-auto px-4 sm:px-6 pt-5 space-y-6">
+          {/* TAB 0: ABOUT ME & THEME PROFILE PAGE */}
+          {activeTab === 'aboutme' && (
+            <div className="space-y-4 animate-fadeIn">
+              <div className="flex items-center justify-between p-3 sm:p-4 bg-white rounded-2xl border border-purple-200/90 shadow-2xs">
+                <button
+                  type="button"
+                  onClick={() => setActiveTab('dashboard')}
+                  className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-950 text-xs font-bold transition-all cursor-pointer shadow-2xs active:scale-95"
+                >
+                  <ArrowLeft className="w-4 h-4 text-purple-700" />
+                  <span>Back to Dashboard</span>
+                </button>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-purple-950 bg-purple-100 px-3 py-1.5 rounded-xl border border-purple-300 shadow-2xs flex items-center gap-1.5">
+                    👤 Profile & Theme Studio
+                  </span>
+                </div>
+              </div>
+
+              <AboutMePage
+                profile={userProfile}
+                onUpdateProfile={(updated) => {
+                  setUserProfile(updated);
+                  if (updated.name && updated.name !== todayData.userName) {
+                    setTodayData(prev => ({ ...prev, userName: updated.name }));
+                  }
+                }}
+                onClose={() => setActiveTab('dashboard')}
+                soundEnabled={soundEnabled}
+                onToast={showToast}
+                onThemeChange={(newTheme) => {
+                  setAppTheme(newTheme);
+                  showToast("🎨 Theme Customization", `Theme set to ${newTheme.toUpperCase()}.`, "success");
+                }}
+              />
+            </div>
+          )}
           {/* TAB 1: DEDICATED HOLIDAY PAGE */}
           {activeTab === 'holidays' && (
             <div className="space-y-4 animate-fadeIn">
@@ -820,6 +935,7 @@ export default function App() {
                     onUpdateLabData={setLabData}
                     soundEnabled={soundEnabled}
                     onOpenStretchRelief={() => setIsStretchOpen(true)}
+                    onToast={showToast}
                   />
 
                   {/* Sub-card 2: Project Tracker */}

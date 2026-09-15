@@ -1,5 +1,6 @@
 import { 
   LabData, 
+  LabEntry,
   ProjectData, 
   ClassPeriod, 
   DayOfWeek, 
@@ -158,8 +159,25 @@ export function getNextLabInfo(labData: LabData): {
   displayText: string;
   formattedTime: string;
   isSoon: boolean;
+  matchedLab?: LabEntry;
 } {
-  if (labData.hasLab === 'no') {
+  // Collect all labs: either from labs array or legacy single lab
+  const allLabs: LabEntry[] = [];
+  if (labData.labs && labData.labs.length > 0) {
+    allLabs.push(...labData.labs);
+  } else if (labData.hasLab === 'yes') {
+    allLabs.push({
+      id: 'legacy-lab',
+      labName: labData.labName || 'Laboratory Session',
+      labDay: labData.labDay,
+      labTime: labData.labTime || '09:00',
+      labLocation: labData.labLocation,
+      equipment: labData.equipment || [],
+      reminderLeadTimeHours: labData.reminderLeadTimeHours || 24
+    });
+  }
+
+  if (allLabs.length === 0) {
     return {
       isToday: false,
       isTomorrow: false,
@@ -172,47 +190,70 @@ export function getNextLabInfo(labData: LabData): {
 
   const now = new Date();
   const currentDayIndex = now.getDay();
-  const targetDayIndex = DAYS_OF_WEEK.indexOf(labData.labDay);
 
-  let daysDiff = targetDayIndex - currentDayIndex;
-  
-  const [labHours, labMinutes] = (labData.labTime || '09:00').split(':').map(Number);
-  const labTimeToday = new Date(now);
-  labTimeToday.setHours(labHours, labMinutes, 0, 0);
+  // Find the closest upcoming lab
+  let closestDiff = Infinity;
+  let closestLab: LabEntry | null = null;
+  let closestFormattedTime = '';
 
-  if (daysDiff < 0 || (daysDiff === 0 && now.getTime() > labTimeToday.getTime())) {
-    daysDiff += 7;
+  for (const lab of allLabs) {
+    const targetDayIndex = DAYS_OF_WEEK.indexOf(lab.labDay);
+    let daysDiff = targetDayIndex - currentDayIndex;
+
+    const [labHours, labMinutes] = (lab.labTime || '09:00').split(':').map(Number);
+    const labTimeToday = new Date(now);
+    labTimeToday.setHours(labHours, labMinutes, 0, 0);
+
+    if (daysDiff < 0 || (daysDiff === 0 && now.getTime() > labTimeToday.getTime())) {
+      daysDiff += 7;
+    }
+
+    if (daysDiff < closestDiff) {
+      closestDiff = daysDiff;
+      closestLab = lab;
+
+      const dummyDate = new Date();
+      dummyDate.setHours(labHours, labMinutes);
+      closestFormattedTime = dummyDate.toLocaleTimeString('en-US', {
+        hour: 'numeric',
+        minute: '2-digit',
+        hour12: true
+      });
+    }
   }
 
-  // Format 12-hour time
-  const dummyDate = new Date();
-  dummyDate.setHours(labHours, labMinutes);
-  const formattedTime = dummyDate.toLocaleTimeString('en-US', {
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true
-  });
+  if (!closestLab) {
+    return {
+      isToday: false,
+      isTomorrow: false,
+      daysRemaining: -1,
+      displayText: 'No active lab scheduled',
+      formattedTime: '',
+      isSoon: false
+    };
+  }
 
-  const isToday = daysDiff === 0;
-  const isTomorrow = daysDiff === 1;
-  const isSoon = daysDiff <= 1;
+  const isToday = closestDiff === 0;
+  const isTomorrow = closestDiff === 1;
+  const isSoon = closestDiff <= 1;
 
   let displayText = '';
   if (isToday) {
-    displayText = `Today at ${formattedTime}`;
+    displayText = `${closestLab.labName}: Today at ${closestFormattedTime}`;
   } else if (isTomorrow) {
-    displayText = `Tomorrow at ${formattedTime}`;
+    displayText = `${closestLab.labName}: Tomorrow at ${closestFormattedTime}`;
   } else {
-    displayText = `${labData.labDay} at ${formattedTime} (${daysDiff} days)`;
+    displayText = `${closestLab.labName}: ${closestLab.labDay} at ${closestFormattedTime} (${closestDiff} days)`;
   }
 
   return {
     isToday,
     isTomorrow,
-    daysRemaining: daysDiff,
+    daysRemaining: closestDiff,
     displayText,
-    formattedTime,
-    isSoon
+    formattedTime: closestFormattedTime,
+    isSoon,
+    matchedLab: closestLab
   };
 }
 

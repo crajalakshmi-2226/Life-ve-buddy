@@ -17,7 +17,8 @@ import {
   Palmtree,
   Cake,
   History,
-  LayoutDashboard
+  LayoutDashboard,
+  User
 } from 'lucide-react';
 import { formatHeaderDate } from '../utils/helpers';
 import { RiskLevel } from '../types';
@@ -26,8 +27,9 @@ import { PWAInstallButton } from './PWAInstallButton';
 interface HeaderProps {
   userName?: string;
   onUpdateUserName?: (name: string) => void;
-  activeTab?: 'dashboard' | 'holidays' | 'history';
-  onChangeTab?: (tab: 'dashboard' | 'holidays' | 'history') => void;
+  activeTab?: 'dashboard' | 'holidays' | 'history' | 'aboutme';
+  onChangeTab?: (tab: 'dashboard' | 'holidays' | 'history' | 'aboutme') => void;
+  onOpenAboutMe?: () => void;
   onOpenBirthday?: () => void;
   soundEnabled: boolean;
   onToggleSound: () => void;
@@ -52,6 +54,7 @@ export const Header: React.FC<HeaderProps> = ({
   onUpdateUserName,
   activeTab = 'dashboard',
   onChangeTab,
+  onOpenAboutMe,
   onOpenBirthday,
   soundEnabled,
   onToggleSound,
@@ -144,6 +147,19 @@ export const Header: React.FC<HeaderProps> = ({
                   </form>
                 )}
 
+                {/* About Me Profile Button next to Name */}
+                {onOpenAboutMe && (
+                  <button
+                    type="button"
+                    onClick={onOpenAboutMe}
+                    title="Open About Me profile & theme customization"
+                    className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-bold bg-purple-100 hover:bg-purple-200 text-purple-900 border border-purple-300 shadow-2xs transition-all cursor-pointer"
+                  >
+                    <User className="w-3 h-3 text-purple-700" />
+                    <span>About Me</span>
+                  </button>
+                )}
+
                 {totalStreak > 0 && (
                   <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-purple-100 text-purple-900 border border-purple-300 shadow-2xs">
                     🔥 {totalStreak}d
@@ -222,6 +238,19 @@ export const Header: React.FC<HeaderProps> = ({
               >
                 <History className="w-3 h-3" />
                 <span>History</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => onChangeTab('aboutme')}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                  activeTab === 'aboutme'
+                    ? 'bg-purple-700 text-white shadow-xs'
+                    : 'text-purple-900 hover:bg-purple-200/60'
+                }`}
+              >
+                <User className="w-3 h-3" />
+                <span>About Me</span>
               </button>
             </div>
           )}

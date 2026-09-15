@@ -35,14 +35,59 @@ export interface EquipmentItem {
   checked: boolean;
 }
 
+export interface LabEntry {
+  id: string;
+  labName: string;
+  labDay: DayOfWeek;
+  labTime: string; // e.g. "09:00"
+  labEndTime?: string; // e.g. "11:00"
+  labLocation?: string;
+  reminderLeadTimeHours?: number; // e.g. 24 (evening before/1 day), 2, 1
+  equipment: EquipmentItem[];
+  labNotes?: string;
+  colorTheme?: string;
+}
+
 export interface LabData {
   hasLab: 'yes' | 'no';
+  // Legacy single lab fields retained for backwards compatibility
   labName?: string;
-  labDay: 'Monday' | 'Tuesday' | 'Wednesday' | 'Thursday' | 'Friday' | 'Saturday' | 'Sunday';
+  labDay: DayOfWeek;
   labTime: string;
   labLocation?: string;
   equipment: EquipmentItem[];
   labNotes?: string;
+  // Multiple weekly labs support
+  labs?: LabEntry[];
+  reminderLeadTimeHours?: number;
+}
+
+export type AppTheme = 'purple' | 'blue' | 'green' | 'pink' | 'amber' | 'dark';
+
+export interface UserProfileField {
+  id: string;
+  label: string;
+  value: string;
+  isMandatory?: boolean;
+  isCustom?: boolean;
+}
+
+export interface UserProfile {
+  name: string;
+  hobby: string;
+  college: string;
+  email: string;
+  profilePhoto?: string; // Base64 data URL for private local storage
+  customFields: UserProfileField[];
+  theme: AppTheme;
+  firstSignupSent?: boolean;
+}
+
+export interface UserMilestoneAlert {
+  id: string;
+  date: string; // YYYY-MM-DD
+  description: string;
+  createdAt: number;
 }
 
 export interface ProjectMilestone {

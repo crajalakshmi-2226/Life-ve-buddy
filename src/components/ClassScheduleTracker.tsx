@@ -258,16 +258,21 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
 
   const status = getCurrentClassStatus(periods);
 
-  const openAddModal = (defaultDay?: DayOfWeek) => {
+  const openAddModal = (
+    defaultDay?: DayOfWeek,
+    defaultPeriodNumber?: string,
+    defaultStartTime?: string,
+    defaultEndTime?: string
+  ) => {
     setEditingPeriodId(null);
     const targetDay = defaultDay || (selectedDay !== 'ALL' ? selectedDay : todayDay);
     const countForDay = periods.filter(p => p.days.includes(targetDay)).length;
-    setFormPeriodNumber(`Period ${countForDay + 1}`);
+    setFormPeriodNumber(defaultPeriodNumber || `Period ${countForDay + 1}`);
     setFormSubject('');
     setFormCode('');
     setFormDays([targetDay]);
-    setFormStartTime('09:00');
-    setFormEndTime('10:15');
+    setFormStartTime(defaultStartTime || '09:00');
+    setFormEndTime(defaultEndTime || '10:15');
     setFormRoom('');
     setFormInstructor('');
     setFormColor('purple');
@@ -839,153 +844,194 @@ export const ClassScheduleTracker: React.FC<ClassScheduleTrackerProps> = ({
         )}
       </div>
 
-      {/* FULL WEEKLY TIMETABLE (5-DAY OR 6-DAY) */}
+      {/* FULL WEEKLY TIMETABLE (5-DAY OR 6-DAY) - COLLEGE GRID LAYOUT */}
       {viewMode === 'weekly_timetable' ? (
         <div className="space-y-4">
-          <div className="flex items-center justify-between text-xs text-purple-800">
-            <span className="font-semibold">
-              Academic timetable ({activeDaysList[0]} to {activeDaysList[activeDaysList.length - 1]}):
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-purple-800">
+            <span className="font-semibold flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              Academic College Timetable Grid ({workDaysMode}-Day: {activeDaysList[0]} to {activeDaysList[activeDaysList.length - 1]}):
             </span>
-            <button
-              type="button"
-              onClick={() => openAddModal(todayDay)}
-              className="font-bold text-purple-700 hover:text-purple-950 underline flex items-center gap-1 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>Add New Slot</span>
-            </button>
+            <div className="flex items-center gap-2 text-[11px] text-purple-600 font-medium">
+              <span>💡 Tap the <span className="font-bold text-purple-800">+</span> button in any empty cell to schedule that exact slot directly</span>
+            </div>
           </div>
 
-          <div className={`grid grid-cols-1 md:grid-cols-2 ${workDaysMode === 5 ? 'lg:grid-cols-5' : 'lg:grid-cols-3'} gap-3.5`}>
-            {activeDaysList.map(day => {
-              const dayPeriods = periods
-                .filter(p => p.days.includes(day))
-                .sort((a, b) => a.startTime.localeCompare(b.startTime));
-              const isToday = day === todayDay;
-
-              return (
-                <div 
-                  key={day}
-                  className={`rounded-2xl p-3.5 border transition-all flex flex-col justify-between ${
-                    isToday 
-                      ? 'bg-purple-50/90 border-purple-300 ring-2 ring-purple-400/50 shadow-xs' 
-                      : 'bg-white border-purple-200/90 hover:border-purple-300'
-                  }`}
-                >
-                  {/* Day Column Header */}
-                  <div className="flex items-center justify-between pb-2 mb-2 border-b border-purple-100">
-                    <div className="flex items-center gap-1.5">
-                      <span className="text-sm font-bold font-classic text-purple-950">
-                        {day}
-                      </span>
-                      {isToday && (
-                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-purple-700 text-white shadow-2xs">
-                          Today
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-bold text-purple-700 px-1.5 py-0.5 rounded-md bg-purple-100">
-                        {dayPeriods.length}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => openAddModal(day)}
-                        title={`Add class period for ${day}`}
-                        className="p-1 rounded-lg bg-purple-100 hover:bg-purple-200 text-purple-800 transition-colors cursor-pointer"
+          {/* Timetable Table / Matrix Grid */}
+          <div className="overflow-x-auto rounded-2xl border border-purple-200 bg-white shadow-xs">
+            <table className="w-full border-collapse text-left min-w-[720px]">
+              <thead>
+                <tr className="bg-purple-100/80 border-b border-purple-200">
+                  <th className="p-3 text-xs font-bold font-classic text-purple-950 uppercase tracking-wider w-36 border-r border-purple-200 sticky left-0 bg-purple-100/95 z-10">
+                    Period / Time
+                  </th>
+                  {activeDaysList.map(day => {
+                    const isToday = day === todayDay;
+                    return (
+                      <th
+                        key={day}
+                        className={`p-3 text-xs font-bold font-classic text-purple-950 text-center border-r border-purple-200 last:border-r-0 transition-colors ${
+                          isToday ? 'bg-purple-200/90 text-purple-950' : ''
+                        }`}
                       >
-                        <Plus className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
+                        <div className="flex items-center justify-center gap-1.5">
+                          <span>{day}</span>
+                          {isToday && (
+                            <span className="px-1.5 py-0.2 rounded-full text-[9px] font-extrabold bg-purple-700 text-white shadow-2xs">
+                              Today
+                            </span>
+                          )}
+                        </div>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-purple-100">
+                {/* Dynamically generate Period Rows */}
+                {(() => {
+                  const standardRows = [
+                    { periodNumber: 'Period 1', startTime: '09:00', endTime: '10:15' },
+                    { periodNumber: 'Period 2', startTime: '10:30', endTime: '11:45' },
+                    { periodNumber: 'Period 3', startTime: '12:00', endTime: '13:00' },
+                    { periodNumber: 'Period 4', startTime: '13:00', endTime: '14:15' },
+                    { periodNumber: 'Period 5', startTime: '14:30', endTime: '15:45' },
+                    { periodNumber: 'Period 6', startTime: '16:00', endTime: '17:15' }
+                  ];
 
-                  {/* Day Classes List */}
-                  <div className="space-y-2 flex-1 min-h-[140px]">
-                    {dayPeriods.length === 0 ? (
-                      <div className="h-full flex flex-col items-center justify-center py-6 text-center text-slate-400 space-y-1.5 border border-dashed border-purple-200/60 rounded-xl bg-purple-50/20">
-                        <span className="text-lg opacity-40">☕</span>
-                        <p className="text-xs font-medium text-purple-400">No classes on {day}</p>
-                        <button
-                          type="button"
-                          onClick={() => openAddModal(day)}
-                          className="text-[11px] font-bold text-purple-700 hover:underline cursor-pointer"
-                        >
-                          + Add slot
-                        </button>
-                      </div>
-                    ) : (
-                      dayPeriods.map(p => {
-                        const theme = COLOR_THEMES.find(t => t.id === p.colorTheme) || COLOR_THEMES[0];
-                        return (
-                          <div
-                            key={`${day}-${p.id}`}
-                            className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all ${theme.bg} ${theme.border} group`}
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className={`px-1.5 py-0.2 rounded text-[10px] font-bold ${theme.badge}`}>
-                                {p.periodNumber}
-                              </span>
-                              <div className="flex items-center gap-1 text-[10px] font-bold text-purple-900 font-mono">
-                                <Clock className="w-3 h-3 text-purple-600" />
-                                <span>{formatTime12(p.startTime)} - {formatTime12(p.endTime)}</span>
-                              </div>
-                            </div>
+                  // Collect all periods mapped
+                  const rowMap = new Map<string, { periodNumber: string; startTime: string; endTime: string }>();
+                  standardRows.forEach(r => rowMap.set(r.periodNumber, r));
 
-                            <div>
-                              <h4 className="font-bold text-purple-950 line-clamp-1">
-                                {p.subject}
-                              </h4>
-                              {(p.code || p.room) && (
-                                <div className="text-[10px] text-purple-700 font-medium flex items-center gap-2 mt-0.5">
-                                  {p.code && <span className="font-semibold">{p.code}</span>}
-                                  {p.room && <span>• {p.room}</span>}
-                                </div>
-                              )}
-                            </div>
+                  periods.forEach(p => {
+                    const key = p.periodNumber || `Slot ${p.startTime}`;
+                    if (!rowMap.has(key)) {
+                      rowMap.set(key, { periodNumber: key, startTime: p.startTime, endTime: p.endTime });
+                    }
+                  });
 
-                            {/* Actions row */}
-                            <div className="pt-1.5 border-t border-black/5 flex items-center justify-between gap-2">
-                              <button
-                                type="button"
-                                onClick={() => toggleAttendance(p.id)}
-                                className="flex items-center gap-1 text-[10px] font-bold text-purple-900 cursor-pointer"
-                              >
-                                {p.attendedToday ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100" />
-                                ) : (
-                                  <Circle className="w-3.5 h-3.5 text-purple-400" />
-                                )}
-                                <span>{p.attendedToday ? 'Attended' : 'Mark attend'}</span>
-                              </button>
+                  const rows = Array.from(rowMap.values()).sort((a, b) => a.startTime.localeCompare(b.startTime));
 
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() => openEditModal(p)}
-                                  className="p-1 rounded text-purple-700 hover:bg-white/80 transition-colors cursor-pointer"
-                                  title="Edit period"
-                                >
-                                  <Edit3 className="w-3 h-3" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDeletePeriod(p.id, p.subject)}
-                                  className="p-1 rounded text-purple-400 hover:text-rose-600 hover:bg-white/80 transition-colors cursor-pointer"
-                                  title="Delete period"
-                                >
-                                  <Trash2 className="w-3 h-3" />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
+                  return rows.map((row) => (
+                    <tr key={row.periodNumber} className="hover:bg-purple-50/20 transition-colors">
+                      {/* Row Header: Period Number & Time */}
+                      <td className="p-3 text-xs font-bold text-purple-950 border-r border-purple-200 sticky left-0 bg-white/95 z-10">
+                        <div className="font-classic text-sm text-purple-900">{row.periodNumber}</div>
+                        <div className="text-[10px] text-purple-600 font-mono flex items-center gap-1 mt-0.5">
+                          <Clock className="w-2.5 h-2.5 text-purple-400" />
+                          <span>{formatTime12(row.startTime)} – {formatTime12(row.endTime)}</span>
+                        </div>
+                      </td>
+
+                      {/* Day Columns for this Period */}
+                      {activeDaysList.map(day => {
+                        // Find matching period for this day & slot
+                        const matchedClass = periods.find(p => 
+                          p.days.includes(day) && (
+                            p.periodNumber === row.periodNumber || 
+                            p.startTime === row.startTime
+                          )
                         );
-                      })
-                    )}
-                  </div>
-                </div>
-              );
-            })}
+                        const isToday = day === todayDay;
+
+                        return (
+                          <td
+                            key={`${row.periodNumber}-${day}`}
+                            className={`p-2 border-r border-purple-200 last:border-r-0 align-top transition-colors ${
+                              isToday ? 'bg-purple-50/40' : ''
+                            }`}
+                          >
+                            {matchedClass ? (
+                              // Scheduled Class Card
+                              (() => {
+                                const theme = COLOR_THEMES.find(t => t.id === matchedClass.colorTheme) || COLOR_THEMES[0];
+                                return (
+                                  <div
+                                    className={`p-2.5 rounded-xl border text-xs space-y-1.5 transition-all shadow-2xs ${theme.bg} ${theme.border} group`}
+                                  >
+                                    <div className="flex items-center justify-between gap-1">
+                                      <span className={`px-1.5 py-0.2 rounded text-[9px] font-bold ${theme.badge}`}>
+                                        {matchedClass.code || matchedClass.periodNumber}
+                                      </span>
+                                      <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={() => openEditModal(matchedClass)}
+                                          title="Edit class"
+                                          className="p-1 rounded hover:bg-white/80 text-purple-700 transition-colors cursor-pointer"
+                                        >
+                                          <Edit3 className="w-3 h-3" />
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => handleDeletePeriod(matchedClass.id, matchedClass.subject)}
+                                          title="Delete class"
+                                          className="p-1 rounded hover:bg-white/80 text-rose-600 transition-colors cursor-pointer"
+                                        >
+                                          <Trash2 className="w-3 h-3" />
+                                        </button>
+                                      </div>
+                                    </div>
+
+                                    <div>
+                                      <h4 className="font-bold text-purple-950 text-xs line-clamp-1 leading-tight" title={matchedClass.subject}>
+                                        {matchedClass.subject}
+                                      </h4>
+                                      {matchedClass.room && (
+                                        <p className="text-[10px] text-purple-700/90 font-medium truncate mt-0.5">
+                                          📍 {matchedClass.room}
+                                        </p>
+                                      )}
+                                      {matchedClass.instructor && (
+                                        <p className="text-[9px] text-purple-600 truncate">
+                                          👨‍🏫 {matchedClass.instructor}
+                                        </p>
+                                      )}
+                                    </div>
+
+                                    {/* Attendance Status */}
+                                    {isToday && (
+                                      <div className="pt-1 border-t border-black/5 flex items-center justify-between">
+                                        <button
+                                          type="button"
+                                          onClick={() => toggleAttendance(matchedClass.id)}
+                                          className="flex items-center gap-1 text-[10px] font-bold text-purple-900 cursor-pointer"
+                                        >
+                                          {matchedClass.attendedToday ? (
+                                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 fill-emerald-100" />
+                                          ) : (
+                                            <Circle className="w-3.5 h-3.5 text-purple-400" />
+                                          )}
+                                          <span>{matchedClass.attendedToday ? 'Attended' : 'Mark'}</span>
+                                        </button>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })()
+                            ) : (
+                              // Empty Grid Slot with "+" Button directly inside!
+                              <div
+                                onClick={() => openAddModal(day, row.periodNumber, row.startTime, row.endTime)}
+                                className="h-24 sm:h-26 rounded-xl border border-dashed border-purple-200/80 hover:border-purple-400 hover:bg-purple-100/50 flex flex-col items-center justify-center p-2 text-center transition-all cursor-pointer group"
+                                title={`Add class for ${day} ${row.periodNumber} (${formatTime12(row.startTime)})`}
+                              >
+                                <div className="w-6 h-6 rounded-full bg-purple-100 group-hover:bg-purple-700 group-hover:text-white text-purple-700 flex items-center justify-center transition-all shadow-2xs">
+                                  <Plus className="w-3.5 h-3.5" />
+                                </div>
+                                <span className="text-[10px] text-purple-400 group-hover:text-purple-800 font-semibold mt-1">
+                                  Add
+                                </span>
+                              </div>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ));
+                })()}
+              </tbody>
+            </table>
           </div>
         </div>
       ) : null}
