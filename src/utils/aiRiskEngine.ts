@@ -276,24 +276,30 @@ export function evaluateStudentRisk(input: StudentAcademicProfile | {
 
   const raw = input as any;
   const att: number = raw.overallAttendance ?? raw.attendancePercent ?? 75;
+  const targetThreshold: number = raw.targetAttendancePercentage ?? raw.targetThreshold ?? 75;
   const pending: number = raw.pendingAssignmentsCount ?? raw.pendingAssignments ?? 0;
   const missed: number = raw.missedDeadlinesCount ?? raw.missedDeadlines ?? 0;
   const engagement: number = raw.engagementScore ?? raw.engagementLevel ?? 60;
   const trend: string = raw.academicTrend || 'Stable';
 
-  // Attendance Factor (Weight: 35%)
-  if (att < 65) {
-    score += 35;
-    factors.push(`Critical attendance deficit (${att.toFixed(1)}% < 75% minimum required)`);
-  } else if (att < 75) {
-    score += 26;
-    factors.push(`Attendance below mandatory 75% threshold (${att.toFixed(1)}%)`);
-  } else if (att < 80) {
-    score += 14;
-    factors.push(`Borderline attendance (${att.toFixed(1)}%) with low absence buffer`);
+  // Attendance Factor (Calculated STRICTLY relative to user's expected target percentage)
+  // Only triggers warning penalty when actual attendance < user target percentage
+  if (att < targetThreshold) {
+    const gap = Number((targetThreshold - att).toFixed(1));
+    if (gap > 8) {
+      score += 35;
+      factors.push(`Critical attendance shortage: ${att.toFixed(1)}% is ${gap}% below your ${targetThreshold}% target. Attend upcoming classes regularly.`);
+    } else if (gap > 3) {
+      score += 24;
+      factors.push(`Attendance deficit: ${att.toFixed(1)}% is ${gap}% below your ${targetThreshold}% target. Attend upcoming classes regularly.`);
+    } else {
+      score += 12;
+      factors.push(`Attendance warning: ${att.toFixed(1)}% is below your expected target of ${targetThreshold}% (-${gap}%). Attend upcoming classes regularly.`);
+    }
   } else {
-    score += 2;
-    positive.push(`Safe overall attendance (${att.toFixed(1)}% > 75%)`);
+    // Attendance meets or exceeds target -> NO penalty, add positive signal
+    score += 0;
+    positive.push(`Attendance (${att.toFixed(1)}%) meets or exceeds your ${targetThreshold}% target.`);
   }
 
   // Pending Assignments (Weight: 25%)
@@ -372,68 +378,68 @@ export function evaluateStudentRisk(input: StudentAcademicProfile | {
 export function generatePersonalizedAlerts(profile: StudentAcademicProfile): AlertNotificationItem[] {
   const alerts: AlertNotificationItem[] = [];
   const now = Date.now();
+  const targetThreshold: number = (profile as any).targetAttendancePercentage ?? (profile as any).targetThreshold ?? 75;
+  const isAttendanceShortfall = profile.overallAttendance < targetThreshold;
 
-  // 1. High-Priority Combined Early Warning (As requested by Prompt)
-  if (profile.overallAttendance < 78 || profile.pendingAssignmentsCount >= 2 || profile.academicTrend === 'Declining') {
+  // 1. Attendance Warning Alert - Strictly fires ONLY when actual attendance is below user target
+  if (isAttendanceShortfall) {
+    const gap = Number((targetThreshold - profile.overallAttendance).toFixed(1));
+    const isCritical = gap > 8;
+    const isModerate = gap > 3;
+
     alerts.push({
-      id: "alert-core-1",
-      title: "⚠️ HIGH-PRIORITY ALERT: Academic Risk Detected",
-      message: `Your academic risk level is high. You have ${profile.pendingAssignmentsCount} pending assignments and recent performance has declined across internal assessments. Attendance is currently at ${profile.overallAttendance}%.`,
-      category: "Academic",
-      priority: "High",
-      riskLevel: "Critical",
+      id: "alert-attendance-shortage",
+      title: isCritical 
+        ? `🚨 CRITICAL: Attendance Shortage (${profile.overallAttendance.toFixed(1)}%)`
+        : `⚠️ Attendance Warning: Below ${targetThreshold}% Target`,
+      message: `Your attendance is below your expected percentage. Current: ${profile.overallAttendance.toFixed(1)}% | Expected Target: ${targetThreshold}% | Deficit: -${gap}%. Attend upcoming classes regularly.`,
+      category: "Attendance",
+      priority: isCritical ? "Emergency" : isModerate ? "High" : "Medium",
+      riskLevel: isCritical ? "Critical" : isModerate ? "Action Required" : "Warning",
       timestamp: now - 1000 * 60 * 15,
       dateStr: "Today, 10:15 AM",
       isRead: false,
       actionRequired: true,
       earlyWarning: true,
       recommendedActions: [
-        "Complete pending DSP & OS coursework submissions immediately",
-        "Contact faculty advisor Dr. Arvind Sharma for academic guidance",
-        "Attend next 4 consecutive classes in Operating Systems to avoid debarment"
+        `Attend upcoming consecutive classes without absence to reach ${targetThreshold}%`,
+        `Check with course instructor regarding attendance registers and condonation rules`,
+        `Submit medical/official proof for excused absences if available`
       ],
-      dispatchedChannels: ["In-App", "Email", "SMS", "Push"],
-      emailSnippet: {
-        from: "Academic Advisory Board <alerts@university.edu>",
-        to: `${profile.studentName.toLowerCase().replace(/\s+/g, '.')}@student.university.edu`,
-        subject: "URGENT: Academic Early Warning & Performance Alert",
-        body: `Dear ${profile.studentName},\n\nOur AI Academic Advisory System detected a declining performance trajectory. You currently have ${profile.pendingAssignmentsCount} pending assignments and attendance in CS302 / CS305 has dropped below the safe margin.\n\nPlease meet your Faculty Advisor and submit your assignments before the upcoming deadlines.\n\nRegards,\nDean of Academics`
-      },
-      smsSnippet: {
-        senderId: "UNIV-ALERT",
-        messageText: `[URGENT] ${profile.studentName}: Academic Risk High. ${profile.pendingAssignmentsCount} pending tasks & attendance at ${profile.overallAttendance}%. Action required immediately: portal.univ.edu/alerts`
-      }
+      dispatchedChannels: isCritical ? ["In-App", "Email", "SMS", "Push"] : ["In-App", "Push"]
     });
   }
 
-  // 2. Early Warning System (Example from User Specification)
-  alerts.push({
-    id: "alert-early-warning",
-    title: "⚠️ Academic Early Warning",
-    message: "Your recent performance indicates a possible decline. Complete the pending assignments and attend upcoming classes regularly.",
-    category: "Academic",
-    priority: "High",
-    riskLevel: "Warning",
-    timestamp: now - 1000 * 60 * 60 * 2,
-    dateStr: "Today, 08:30 AM",
-    isRead: false,
-    actionRequired: true,
-    earlyWarning: true,
-    recommendedActions: [
-      "Review lecture recordings for CS305 (DSP)",
-      "Submit pending assignments before due dates",
-      "Attend all upcoming lectures this week"
-    ],
-    dispatchedChannels: ["In-App", "Push"]
-  });
+  // 2. Academic Performance & Assignments Warning (Only fires if there are pending assignments or declining trend)
+  if (profile.pendingAssignmentsCount >= 2 || profile.academicTrend === 'Declining') {
+    alerts.push({
+      id: "alert-core-1",
+      title: "⚠️ Academic Early Warning",
+      message: `Your recent performance indicates a possible decline with ${profile.pendingAssignmentsCount} pending assignments. Complete the pending assignments and attend upcoming classes regularly.`,
+      category: "Academic",
+      priority: profile.pendingAssignmentsCount >= 3 ? "High" : "Medium",
+      riskLevel: profile.pendingAssignmentsCount >= 3 ? "Action Required" : "Warning",
+      timestamp: now - 1000 * 60 * 60 * 2,
+      dateStr: "Today, 08:30 AM",
+      isRead: false,
+      actionRequired: true,
+      earlyWarning: true,
+      recommendedActions: [
+        "Review lecture recordings for pending coursework",
+        "Submit pending assignments before upcoming deadlines",
+        "Attend all upcoming lectures this week"
+      ],
+      dispatchedChannels: ["In-App", "Push"]
+    });
+  }
 
-  // 3. Subject-wise Critical Attendance Alert (DSP < 65%)
-  const criticalSub = profile.subjects.find(s => s.status === 'Critical');
-  if (criticalSub) {
+  // 3. Subject-wise Critical Attendance Alert (Only if subject is below target threshold)
+  const criticalSub = profile.subjects.find(s => s.percentage < targetThreshold);
+  if (criticalSub && isAttendanceShortfall) {
     alerts.push({
       id: "alert-att-dsp",
       title: `🚨 Attendance Shortage: ${criticalSub.subject} (${criticalSub.percentage.toFixed(1)}%)`,
-      message: `You are at severe risk of examination debarment in ${criticalSub.code}. You must attend ${criticalSub.classesNeededFor75} consecutive upcoming classes to cross the 75% eligibility mark.`,
+      message: `Your attendance in ${criticalSub.code} is below your expected target of ${targetThreshold}%. Attend upcoming classes regularly.`,
       category: "Attendance",
       priority: "Emergency",
       riskLevel: "Critical",
@@ -443,7 +449,7 @@ export function generatePersonalizedAlerts(profile: StudentAcademicProfile): Ale
       actionRequired: true,
       subject: criticalSub.subject,
       recommendedActions: [
-        `Attend next ${criticalSub.classesNeededFor75} classes without missing any slot`,
+        `Attend next ${criticalSub.classesNeededFor75 || 4} classes without missing any slot`,
         `Submit medical/official duty certificate to HOD if applicable`,
         `Meet Course Instructor ${criticalSub.instructor}`
       ],

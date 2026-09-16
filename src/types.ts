@@ -22,9 +22,10 @@ export interface ClassPeriod {
 
 export interface TodayData {
   userName?: string;
-  focusWord: string;
+  focusWord?: string;
   mood: MoodType;
   smallWin: string;
+  whatIDidToday?: string;
   lastActiveDate: string;
   notes?: string;
 }
@@ -423,16 +424,29 @@ export interface CustomReminderTiming {
 }
 
 // ==========================================
-// BIRTHDAY REMINDER TYPES
+// BIRTHDAY REMINDER TYPES (WITH EXTRA BIRTHDAYS ADD/DELETE)
 // ==========================================
 
-export interface BirthdayData {
+export type RelationshipType = 'Friend' | 'Family' | 'Classmate' | 'Colleague' | 'Mentor' | 'Other';
+
+export interface ExtraBirthdayItem {
+  id: string;
+  name: string;
+  relationship: RelationshipType;
   birthdayDate: string; // YYYY-MM-DD
+  customWishNote?: string;
+  reminderTiming: CustomReminderTiming;
+  colorTheme?: 'rose' | 'purple' | 'amber' | 'emerald' | 'sky' | 'indigo';
+}
+
+export interface BirthdayData {
+  birthdayDate: string; // YYYY-MM-DD (User's personal birthday)
   userName?: string;
   wishesEnabled: boolean;
   reminderTiming: CustomReminderTiming;
   customWishNote?: string;
   lastCelebratedYear?: number;
+  extraBirthdays?: ExtraBirthdayItem[]; // List of extra birthdays (friends, family, classmates)
 }
 
 // ==========================================
@@ -475,11 +489,11 @@ export interface InstitutionAttendanceConfig {
 // UNIFIED HISTORY PAGE RECORD TYPES
 // ==========================================
 
-export type HistoryCategory = 'All' | 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities';
+export type HistoryCategory = 'All' | 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities' | 'Reminders';
 
 export interface HistoryRecordItem {
   id: string;
-  category: 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities';
+  category: 'Attendance & Leaves' | 'Habits' | 'Exams' | 'Holidays' | 'Assignments' | 'Physical Activities' | 'Reminders';
   title: string;
   date: string;
   status: string;
@@ -551,6 +565,18 @@ export interface TomorrowConfirmationRecord {
   skippedPeriodIds: string[];
   notes?: string;
 }
+
+export interface QuickReminder {
+  id: string;
+  subject: string;
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  remindMeAt: string; // YYYY-MM-DDTHH:mm
+  createdAt: number;
+  completed?: boolean;
+  notified?: boolean;
+}
+
 
 
 

@@ -31,6 +31,8 @@ interface HeaderProps {
   onChangeTab?: (tab: 'dashboard' | 'holidays' | 'history' | 'aboutme') => void;
   onOpenAboutMe?: () => void;
   onOpenBirthday?: () => void;
+  hasBirthdayToday?: boolean;
+  extraBirthdaysCount?: number;
   soundEnabled: boolean;
   onToggleSound: () => void;
   isAndroidView: boolean;
@@ -56,6 +58,8 @@ export const Header: React.FC<HeaderProps> = ({
   onChangeTab,
   onOpenAboutMe,
   onOpenBirthday,
+  hasBirthdayToday = false,
+  extraBirthdaysCount = 0,
   soundEnabled,
   onToggleSound,
   isAndroidView,
@@ -261,10 +265,23 @@ export const Header: React.FC<HeaderProps> = ({
               type="button"
               onClick={onOpenBirthday}
               title="Open Birthday Reminder & Celebration Wishes"
-              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-bold text-rose-950 bg-rose-100 hover:bg-rose-200 border border-rose-300 transition-all shadow-2xs active:scale-95 cursor-pointer"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all shadow-2xs active:scale-95 cursor-pointer ${
+                hasBirthdayToday
+                  ? 'text-white bg-gradient-to-r from-rose-600 to-pink-600 border-rose-400 ring-2 ring-rose-300 animate-pulse'
+                  : 'text-rose-950 bg-rose-100 hover:bg-rose-200 border-rose-300'
+              }`}
             >
-              <Cake className="w-3.5 h-3.5 text-rose-600 animate-bounce" />
+              <Cake className={`w-3.5 h-3.5 ${hasBirthdayToday ? 'text-white animate-bounce' : 'text-rose-600'}`} />
               <span>Birthday</span>
+              {hasBirthdayToday ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black bg-white text-rose-700">
+                  Today!
+                </span>
+              ) : extraBirthdaysCount > 0 ? (
+                <span className="px-1.5 py-0.2 rounded-full text-[9px] font-bold bg-rose-200 text-rose-900">
+                  {extraBirthdaysCount}
+                </span>
+              ) : null}
             </button>
           )}
 

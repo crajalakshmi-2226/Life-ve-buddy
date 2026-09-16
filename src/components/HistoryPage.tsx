@@ -15,7 +15,9 @@ import {
   Download, 
   Layers,
   ArrowUpDown,
-  FileText
+  FileText,
+  Bell,
+  Activity
 } from 'lucide-react';
 import { HistoryRecordItem, HistoryCategory } from '../types';
 
@@ -37,10 +39,12 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
   const categories: HistoryCategory[] = [
     'All',
     'Attendance & Leaves',
+    'Reminders',
     'Assignments',
     'Habits',
     'Exams',
-    'Holidays'
+    'Holidays',
+    'Physical Activities'
   ];
 
   // Filtering
@@ -62,6 +66,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     switch (category) {
       case 'Attendance & Leaves':
         return <Clock className="w-4 h-4 text-purple-600" />;
+      case 'Reminders':
+        return <Bell className="w-4 h-4 text-amber-600" />;
       case 'Assignments':
         return <FolderGit2 className="w-4 h-4 text-indigo-600" />;
       case 'Habits':
@@ -70,6 +76,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         return <GraduationCap className="w-4 h-4 text-rose-600" />;
       case 'Holidays':
         return <Palmtree className="w-4 h-4 text-amber-600" />;
+      case 'Physical Activities':
+        return <Activity className="w-4 h-4 text-teal-600" />;
       default:
         return <FileText className="w-4 h-4 text-purple-600" />;
     }
@@ -79,6 +87,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
     switch (category) {
       case 'Attendance & Leaves':
         return 'bg-purple-100 text-purple-900 border-purple-200';
+      case 'Reminders':
+        return 'bg-amber-100 text-amber-900 border-amber-200';
       case 'Assignments':
         return 'bg-indigo-100 text-indigo-900 border-indigo-200';
       case 'Habits':
@@ -87,6 +97,8 @@ export const HistoryPage: React.FC<HistoryPageProps> = ({
         return 'bg-rose-100 text-rose-900 border-rose-200';
       case 'Holidays':
         return 'bg-amber-100 text-amber-900 border-amber-200';
+      case 'Physical Activities':
+        return 'bg-teal-100 text-teal-900 border-teal-200';
       default:
         return 'bg-purple-100 text-purple-900 border-purple-200';
     }

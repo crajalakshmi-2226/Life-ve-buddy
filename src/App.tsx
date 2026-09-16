@@ -20,6 +20,7 @@ import { BottomOptionsMenu } from './components/BottomOptionsMenu';
 import { AndroidFrame } from './components/AndroidFrame';
 import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystemContainer';
 import { BirthdayModal } from './components/BirthdayModal';
+import { AddReminderModal } from './components/AddReminderModal';
 import { HistoryPage } from './components/HistoryPage';
 import { AboutMePage } from './components/AboutMePage';
 import { InstitutionAttendanceTracker } from './components/InstitutionAttendanceTracker';
@@ -40,11 +41,16 @@ import {
   InstitutionAttendanceConfig,
   HistoryRecordItem,
   UserProfile,
-  AppTheme
+  AppTheme,
+  QuickReminder
 } from './types';
 import { fetchDailyQuote } from './utils/quotes';
 import { getTodayDateString, DEFAULT_EXAMS, getExamCountdown, DEFAULT_HOLIDAYS, getHolidayCountdown, isBirthdayToday } from './utils/helpers';
 import { sendSystemNotification } from './utils/notifications';
+import { 
+  applyThemeColorToDocument, 
+  DEFAULT_THEME_COLOR 
+} from './utils/themeHelper';
 import { 
   DEFAULT_STUDENT_PROFILE, 
   evaluateStudentRisk, 
@@ -248,6 +254,33 @@ export default function App() {
     return (localStorage.getItem('app_theme') as AppTheme) || 'purple';
   });
 
+  const [customThemeColor, setCustomThemeColor] = useState<string>(() => {
+    return localStorage.getItem('custom_theme_color') || DEFAULT_THEME_COLOR;
+  });
+
+  const [isReminderModalOpen, setIsReminderModalOpen] = useState<boolean>(false);
+  const [editingReminder, setEditingReminder] = useState<QuickReminder | null>(null);
+
+  const [quickReminders, setQuickReminders] = useState<QuickReminder[]>(() => {
+    const saved = localStorage.getItem("quickReminders");
+    if (saved) {
+      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
+    }
+    const todayStr = getTodayDateString();
+    return [
+      {
+        id: "rem_sample_1",
+        subject: "Submit DSP Lab Report & Observations",
+        date: todayStr,
+        time: "17:00",
+        remindMeAt: `${todayStr}T16:30`,
+        createdAt: Date.now() - 3600000,
+        completed: false,
+        notified: false
+      }
+    ];
+  });
+
   const [birthdayData, setBirthdayData] = useState<BirthdayData>(() => {
     const saved = localStorage.getItem("birthdayData");
     if (saved) {
@@ -344,6 +377,96 @@ export default function App() {
       setToasts(prev => prev.filter(t => t.id !== id));
     }, 4500);
   }, []);
+
+  // Dynamic Theme Color Application
+  useEffect(() => {
+    applyThemeColorToDocument(customThemeColor);
+    localStorage.setItem('custom_theme_color', customThemeColor);
+  }, [customThemeColor]);
+
+  // Persist quick reminders
+  useEffect(() => {
+    localStorage.setItem('quickReminders', JSON.stringify(quickReminders));
+  }, [quickReminders]);
+
+  // Background reminder notification checker
+  useEffect(() => {
+    const checkReminders = () => {
+      const now = Date.now();
+      setQuickReminders(prevReminders => {
+        let hasChanges = false;
+        const updated = prevReminders.map(rem => {
+          if (!rem.completed && !rem.notified && rem.remindMeAt) {
+            const reminderTime = new Date(rem.remindMeAt).getTime();
+            if (!isNaN(reminderTime) && reminderTime <= now) {
+              hasChanges = true;
+              sendSystemNotification({
+                title: `🔔 Reminder: ${rem.subject}`,
+                body: `Scheduled for ${rem.date} at ${rem.time}`,
+                soundEnabled
+              });
+              showToast(`🔔 Reminder: ${rem.subject}`, `Scheduled for ${rem.date} at ${rem.time}`, 'alert');
+              if (soundEnabled) playSuccessChime();
+              return { ...rem, notified: true };
+            }
+          }
+          return rem;
+        });
+        return hasChanges ? updated : prevReminders;
+      });
+    };
+
+    checkReminders();
+    const timer = setInterval(checkReminders, 15000);
+    return () => clearInterval(timer);
+  }, [soundEnabled, showToast]);
+
+  const handleSaveReminder = (reminder: QuickReminder) => {
+    setQuickReminders(prev => {
+      const exists = prev.some(r => r.id === reminder.id);
+      if (exists) {
+        return prev.map(r => r.id === reminder.id ? reminder : r);
+      }
+      return [reminder, ...prev];
+    });
+
+    logHistoryRecord(
+      `Reminder: ${reminder.subject}`,
+      'Reminders',
+      'Active',
+      `Scheduled for ${reminder.date} at ${reminder.time} (Alert: ${reminder.remindMeAt.replace('T', ' ')})`
+    );
+  };
+
+  const handleDeleteReminder = (id: string) => {
+    const rem = quickReminders.find(r => r.id === id);
+    setQuickReminders(prev => prev.filter(r => r.id !== id));
+    if (rem) {
+      logHistoryRecord(`Reminder Removed: ${rem.subject}`, 'Reminders', 'Deleted');
+    }
+    showToast("Reminder Deleted", "Scheduled reminder removed.", "info");
+  };
+
+  const handleToggleReminderComplete = (id: string) => {
+    setQuickReminders(prev => {
+      return prev.map(r => {
+        if (r.id === id) {
+          const next = !r.completed;
+          if (next) {
+            logHistoryRecord(
+              `Reminder Done: ${r.subject}`,
+              'Reminders',
+              'Completed',
+              `Completed on ${getTodayDateString()}`
+            );
+            showToast("Reminder Completed! 🎉", `Marked "${r.subject}" as done.`, "success");
+          }
+          return { ...r, completed: next };
+        }
+        return r;
+      });
+    });
+  };
 
   // Smooth scroll to AI Alert System section
   const scrollToAlerts = () => {
@@ -556,11 +679,11 @@ export default function App() {
 
   // Real System Notification for Birthday (with deduplication per year)
   useEffect(() => {
-    if (!birthdayData.birthdayDate) return;
     const currentYear = new Date().getFullYear();
-    const bdayKey = `bday_system_notif_sent_${currentYear}_${birthdayData.birthdayDate}`;
 
-    if (isBirthdayToday(birthdayData.birthdayDate)) {
+    // 1. User's personal birthday check
+    if (birthdayData.birthdayDate && isBirthdayToday(birthdayData.birthdayDate)) {
+      const bdayKey = `bday_system_notif_sent_${currentYear}_${birthdayData.birthdayDate}`;
       if (!localStorage.getItem(bdayKey)) {
         localStorage.setItem(bdayKey, 'sent');
         sendSystemNotification({
@@ -571,7 +694,27 @@ export default function App() {
         });
       }
     }
-  }, [birthdayData.birthdayDate, todayData.userName, userProfile.name]);
+
+    // 2. Extra birthdays check (friends, family, classmates)
+    if (birthdayData.extraBirthdays && birthdayData.extraBirthdays.length > 0) {
+      birthdayData.extraBirthdays.forEach(extra => {
+        if (extra.birthdayDate && isBirthdayToday(extra.birthdayDate)) {
+          const extraKey = `extra_bday_notif_${currentYear}_${extra.id}_${extra.birthdayDate}`;
+          if (!localStorage.getItem(extraKey)) {
+            localStorage.setItem(extraKey, 'sent');
+            sendSystemNotification({
+              title: `🎂 Today is ${extra.name}'s Birthday! 🎉`,
+              body: extra.customWishNote 
+                ? `Don't forget to wish ${extra.name} (${extra.relationship}): "${extra.customWishNote}"`
+                : `Today is ${extra.name}'s (${extra.relationship}) special day! Send them your warmest wishes.`,
+              tag: `extra-bday-${extra.id}-${currentYear}`,
+              requireInteraction: true
+            });
+          }
+        }
+      });
+    }
+  }, [birthdayData, todayData.userName, userProfile.name]);
 
   // Refresh quote handler
   const handleRefreshQuote = () => {
@@ -672,6 +815,11 @@ export default function App() {
   const unreadAlertsCount = studentAlerts.filter(a => !a.isRead).length;
   const criticalAlertsCount = studentAlerts.filter(a => a.priority === 'Emergency' || a.priority === 'High' || a.riskLevel === 'Critical').length;
 
+  // Birthday indicators for header badge
+  const hasBirthdayToday = (birthdayData.birthdayDate ? isBirthdayToday(birthdayData.birthdayDate) : false) ||
+    (birthdayData.extraBirthdays ? birthdayData.extraBirthdays.some(b => isBirthdayToday(b.birthdayDate)) : false);
+  const extraBirthdaysCount = birthdayData.extraBirthdays?.length || 0;
+
   const getThemeClass = (theme: AppTheme) => {
     switch (theme) {
       case 'blue':
@@ -712,6 +860,8 @@ export default function App() {
           onOpenAlerts={scrollToAlerts}
           onOpenHolidays={() => setActiveTab('holidays')}
           onOpenBirthday={() => setIsBirthdayModalOpen(true)}
+          hasBirthdayToday={hasBirthdayToday}
+          extraBirthdaysCount={extraBirthdaysCount}
           activeTab={activeTab}
           onChangeTab={(tab) => setActiveTab(tab)}
           upcomingExamsCount={upcomingExamsCount}
@@ -767,6 +917,11 @@ export default function App() {
                 onThemeChange={(newTheme) => {
                   setAppTheme(newTheme);
                   showToast("🎨 Theme Customization", `Theme set to ${newTheme.toUpperCase()}.`, "success");
+                }}
+                customThemeColor={customThemeColor}
+                onCustomThemeColorChange={(newHex) => {
+                  setCustomThemeColor(newHex);
+                  showToast("🎨 Color Customizer", `Applied theme color ${newHex} across app.`, "success");
                 }}
               />
             </div>
@@ -851,11 +1006,17 @@ export default function App() {
                 exams={exams}
                 holidays={holidays}
                 soundEnabled={soundEnabled}
+                attendanceConfig={attendanceConfig}
                 onOpenStretchRelief={() => setIsStretchOpen(true)}
                 onOpenClassSchedule={scrollToSchedule}
                 onOpenExamSchedule={scrollToExams}
                 onOpenAlerts={scrollToAlerts}
                 onOpenHolidays={() => setActiveTab('holidays')}
+                onOpenComplaints={scrollToComplaints}
+                onOpenQuickReminder={() => {
+                  setEditingReminder(null);
+                  setIsReminderModalOpen(true);
+                }}
                 criticalAlertsCount={criticalAlertsCount}
               />
 
@@ -1013,10 +1174,30 @@ export default function App() {
           userName={todayData.userName || 'Alex'}
           onSaveBirthday={(newBday) => {
             setBirthdayData(newBday);
-            logHistoryRecord(`Birthday Reminder Configured: ${newBday.birthdayDate}`, 'Habits', 'Configured', `Remind advance: ${newBday.reminderTiming.value} ${newBday.reminderTiming.unit}`);
+            if (newBday.birthdayDate) {
+              logHistoryRecord(`Birthday Settings Updated: ${newBday.birthdayDate}`, 'Habits', 'Configured', `Remind advance: ${newBday.reminderTiming.value} ${newBday.reminderTiming.unit} | Extra Birthdays: ${newBday.extraBirthdays?.length || 0}`);
+            } else {
+              logHistoryRecord('Personal Birthday Cleared', 'Habits', 'Deleted', `Extra Birthdays remaining: ${newBday.extraBirthdays?.length || 0}`);
+            }
           }}
           soundEnabled={soundEnabled}
           onToast={showToast}
+        />
+
+        {/* Quick Reminder Modal with Date, Time, Remind Me At and Background Alerts */}
+        <AddReminderModal
+          isOpen={isReminderModalOpen}
+          onClose={() => {
+            setIsReminderModalOpen(false);
+            setEditingReminder(null);
+          }}
+          reminders={quickReminders}
+          onSaveReminder={handleSaveReminder}
+          onDeleteReminder={handleDeleteReminder}
+          onToggleComplete={handleToggleReminderComplete}
+          soundEnabled={soundEnabled}
+          onToast={showToast}
+          initialEditReminder={editingReminder}
         />
 
         {/* Bottom Options Menu (Customizable Dock with Add/Delete custom items) */}

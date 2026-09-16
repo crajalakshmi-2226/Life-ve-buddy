@@ -792,7 +792,8 @@ export const DEFAULT_BIRTHDAY_DATA: BirthdayData = {
     value: 1,
     unit: 'days'
   },
-  customWishNote: ''
+  customWishNote: '',
+  extraBirthdays: []
 };
 
 export const WARM_BIRTHDAY_WISHES = [

@@ -18,6 +18,12 @@ import {
 } from 'lucide-react';
 import { UserProfile, UserProfileField, AppTheme } from '../types';
 import { playSuccessChime } from '../utils/audio';
+import { 
+  THEME_COLOR_PRESETS, 
+  DEFAULT_THEME_COLOR, 
+  getContrastTextColor, 
+  applyThemeColorToDocument 
+} from '../utils/themeHelper';
 
 interface AboutMePageProps {
   profile: UserProfile;
@@ -26,6 +32,8 @@ interface AboutMePageProps {
   soundEnabled: boolean;
   onToast: (title: string, body: string, type?: 'info' | 'success' | 'alert') => void;
   onThemeChange?: (theme: AppTheme) => void;
+  customThemeColor?: string;
+  onCustomThemeColorChange?: (colorHex: string) => void;
 }
 
 const THEME_OPTIONS: { id: AppTheme; label: string; previewClass: string; accentClass: string; description: string }[] = [
@@ -79,7 +87,9 @@ export const AboutMePage: React.FC<AboutMePageProps> = ({
   onClose,
   soundEnabled,
   onToast,
-  onThemeChange
+  onThemeChange,
+  customThemeColor,
+  onCustomThemeColorChange
 }) => {
   const [name, setName] = useState(profile.name || '');
   const [hobby, setHobby] = useState(profile.hobby || '');
@@ -88,6 +98,9 @@ export const AboutMePage: React.FC<AboutMePageProps> = ({
   const [profilePhoto, setProfilePhoto] = useState<string | undefined>(profile.profilePhoto);
   const [customFields, setCustomFields] = useState<UserProfileField[]>(profile.customFields || []);
   const [selectedTheme, setSelectedTheme] = useState<AppTheme>(profile.theme || 'purple');
+  const [activeCustomColor, setActiveCustomColor] = useState<string>(
+    customThemeColor || (typeof window !== 'undefined' ? localStorage.getItem('lifebuddy_custom_theme_color') || DEFAULT_THEME_COLOR : DEFAULT_THEME_COLOR)
+  );
 
   // Track which default fields the user chose to keep (user can delete ANY field)
   const [showNameField, setShowNameField] = useState(true);
@@ -312,60 +325,175 @@ export const AboutMePage: React.FC<AboutMePageProps> = ({
         </div>
       </div>
 
-      {/* 2. APP THEME CUSTOMIZATION (Request 2) */}
-      <div className="space-y-3 p-4 sm:p-5 rounded-2xl bg-white border border-purple-200">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Palette className="w-4 h-4 text-purple-700" />
-            <h3 className="text-sm sm:text-base font-bold text-purple-950 font-classic">
-              App Theme Customization
-            </h3>
+      {/* 2. DYNAMIC THEME COLOR PICKER / SELECTOR */}
+      <div className="space-y-4 p-4 sm:p-5 rounded-3xl bg-white border border-purple-200/90 shadow-2xs">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2.5">
+            <div 
+              style={{ backgroundColor: activeCustomColor, color: getContrastTextColor(activeCustomColor) }}
+              className="w-8 h-8 rounded-xl flex items-center justify-center shadow-xs transition-all"
+            >
+              <Palette className="w-4 h-4" />
+            </div>
+            <div>
+              <h3 className="text-sm sm:text-base font-bold text-purple-950 font-classic">
+                Theme Color Picker & Customizer
+              </h3>
+              <p className="text-[11px] text-purple-700/90 font-medium">
+                Select any color you want — automatically updates headers, navbars, buttons, icons & borders
+              </p>
+            </div>
           </div>
-          <span className="text-[11px] text-purple-600 font-medium">
-            Applied instantly across all pages
+          <span 
+            style={{ backgroundColor: `${activeCustomColor}1a`, color: activeCustomColor }}
+            className="px-2.5 py-1 rounded-full text-[11px] font-mono font-bold uppercase tracking-wider"
+          >
+            {activeCustomColor}
           </span>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5 pt-1">
-          {THEME_OPTIONS.map((themeOption) => {
-            const isSelected = selectedTheme === themeOption.id;
-            return (
-              <button
-                key={themeOption.id}
-                type="button"
-                onClick={() => {
-                  setSelectedTheme(themeOption.id);
-                  // Apply theme immediately to document/html
-                  document.documentElement.setAttribute('data-theme', themeOption.id);
-                  if (themeOption.id === 'dark') {
-                    document.documentElement.classList.add('dark');
-                  } else {
-                    document.documentElement.classList.remove('dark');
-                  }
-                  if (onThemeChange) onThemeChange(themeOption.id);
+        {/* Dynamic Color Picker Input & Hex Form */}
+        <div className="p-3.5 rounded-2xl bg-purple-50/40 border border-purple-100 flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex items-center gap-3 w-full sm:w-auto">
+            <div className="relative flex-shrink-0">
+              <input
+                type="color"
+                id="customThemeColorInput"
+                value={activeCustomColor.startsWith('#') ? activeCustomColor : '#7c3aed'}
+                onChange={(e) => {
+                  const newHex = e.target.value;
+                  setActiveCustomColor(newHex);
+                  applyThemeColorToDocument(newHex);
+                  if (onCustomThemeColorChange) onCustomThemeColorChange(newHex);
                   if (soundEnabled) playSuccessChime();
                 }}
-                className={`p-3 rounded-2xl border text-left transition-all cursor-pointer flex flex-col justify-between gap-2 ${
-                  isSelected
-                    ? 'ring-2 ring-purple-600 border-purple-500 bg-purple-50/80 shadow-xs'
-                    : 'border-purple-100 hover:border-purple-200 bg-slate-50/50 hover:bg-purple-50/30'
-                }`}
+                className="w-12 h-12 rounded-2xl border-2 border-white shadow-md cursor-pointer p-0 bg-transparent overflow-hidden"
+                title="Click to choose custom theme color"
+              />
+            </div>
+            <div>
+              <label htmlFor="customThemeColorInput" className="text-xs font-bold text-purple-950 block cursor-pointer">
+                Custom Color Wheel
+              </label>
+              <span className="text-[11px] text-purple-600">
+                Click color box to open color picker
+              </span>
+            </div>
+          </div>
+
+          {/* Hex Input & Readability Badge */}
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+            <div className="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-xl border border-purple-200">
+              <span className="text-xs font-mono font-bold text-purple-400">#</span>
+              <input
+                type="text"
+                maxLength={7}
+                value={activeCustomColor.replace('#', '')}
+                onChange={(e) => {
+                  let val = e.target.value.trim();
+                  if (!val.startsWith('#')) val = `#${val}`;
+                  setActiveCustomColor(val);
+                  if (/^#[0-9A-Fa-f]{6}$/.test(val)) {
+                    applyThemeColorToDocument(val);
+                    if (onCustomThemeColorChange) onCustomThemeColorChange(val);
+                  }
+                }}
+                placeholder="7c3aed"
+                className="w-20 text-xs font-mono font-bold text-purple-950 focus:outline-hidden uppercase"
+              />
+            </div>
+
+            {/* Readability Indicator */}
+            <div className="flex items-center gap-1 px-2 py-1 rounded-xl bg-white border border-purple-200 text-[11px] font-semibold text-purple-900">
+              <span 
+                style={{ backgroundColor: activeCustomColor, color: getContrastTextColor(activeCustomColor) }}
+                className="w-4 h-4 rounded-md inline-flex items-center justify-center text-[9px] font-bold"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className={`w-4 h-4 rounded-full shadow-xs ${themeOption.previewClass}`} />
-                    <span className="text-xs font-bold text-purple-950">
-                      {themeOption.label}
-                    </span>
+                A
+              </span>
+              <span>{getContrastTextColor(activeCustomColor) === '#ffffff' ? 'Light Text' : 'Dark Text'}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Preset Palettes */}
+        <div>
+          <div className="text-xs font-bold text-purple-950 mb-2 flex items-center justify-between">
+            <span>Popular Preset Color Palettes</span>
+            <span className="text-[11px] font-normal text-purple-600">Click any preset</span>
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+            {THEME_COLOR_PRESETS.map((preset) => {
+              const isSelected = activeCustomColor.toLowerCase() === preset.hex.toLowerCase();
+              return (
+                <button
+                  key={preset.id}
+                  type="button"
+                  onClick={() => {
+                    setActiveCustomColor(preset.hex);
+                    applyThemeColorToDocument(preset.hex);
+                    if (onCustomThemeColorChange) onCustomThemeColorChange(preset.hex);
+                    if (soundEnabled) playSuccessChime();
+                    onToast?.('🎨 Theme Color Updated', `Applied ${preset.name} (${preset.hex})`, 'info');
+                  }}
+                  className={`p-2.5 rounded-2xl border text-left transition-all cursor-pointer flex items-center gap-2.5 ${
+                    isSelected
+                      ? 'ring-2 ring-purple-600 border-purple-500 bg-purple-50 shadow-xs'
+                      : 'border-purple-100 hover:border-purple-300 bg-white hover:bg-purple-50/40'
+                  }`}
+                >
+                  <span 
+                    style={{ backgroundColor: preset.hex }} 
+                    className="w-5 h-5 rounded-full shadow-xs flex-shrink-0 border border-black/10 flex items-center justify-center text-white"
+                  >
+                    {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
+                  </span>
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-purple-950 truncate">
+                      {preset.name}
+                    </div>
+                    <div className="text-[10px] font-mono text-purple-600/80">
+                      {preset.hex}
+                    </div>
                   </div>
-                  {isSelected && <Check className="w-3.5 h-3.5 text-purple-700 font-bold" />}
-                </div>
-                <p className="text-[11px] text-purple-600/80 line-clamp-2 leading-tight">
-                  {themeOption.description}
-                </p>
-              </button>
-            );
-          })}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Live UI Element Preview Box */}
+        <div className="p-3 rounded-2xl bg-purple-50/40 border border-purple-100 space-y-2">
+          <div className="text-[11px] font-bold text-purple-900 uppercase tracking-wider">
+            Live Preview with Chosen Color
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <button
+              type="button"
+              style={{ backgroundColor: activeCustomColor, color: getContrastTextColor(activeCustomColor) }}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold shadow-xs flex items-center gap-1.5"
+            >
+              <span>Sample Button</span>
+            </button>
+            <div 
+              style={{ borderColor: activeCustomColor, color: activeCustomColor }}
+              className="px-2.5 py-1 rounded-xl text-xs font-bold border bg-white"
+            >
+              Border Accent
+            </div>
+            <div 
+              style={{ backgroundColor: `${activeCustomColor}20`, color: activeCustomColor }}
+              className="px-2 py-0.5 rounded-full text-xs font-bold"
+            >
+              Active Badge
+            </div>
+            <div className="flex-1 min-w-[100px] h-2.5 rounded-full bg-slate-200 overflow-hidden">
+              <div 
+                style={{ backgroundColor: activeCustomColor }} 
+                className="h-full rounded-full w-3/4 transition-all duration-500" 
+              />
+            </div>
+          </div>
         </div>
       </div>
 

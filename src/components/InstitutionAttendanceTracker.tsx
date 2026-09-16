@@ -14,7 +14,8 @@ import {
   Award,
   ChevronRight,
   Sliders,
-  CalendarDays
+  CalendarDays,
+  AlertTriangle
 } from 'lucide-react';
 import { InstitutionAttendanceConfig, AttendanceDailyCheckIn, WorkingDaysPattern } from '../types';
 import { getTodayDateString } from '../utils/helpers';
@@ -92,15 +93,30 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
   const leavesTakenSoFar = Math.max(0, conducted - attended);
   const termSafeBunksRemaining = Math.max(0, totalAllowableLeavesInTerm - leavesTakenSoFar);
 
-  if (currentPercentage < targetThreshold) {
+  const isBelowTarget = currentPercentage < targetThreshold;
+  const attendanceGap = Number((targetThreshold - currentPercentage).toFixed(1));
+
+  // Severity of attendance shortage: only active when actual < target
+  let warningSeverity: 'none' | 'mild' | 'moderate' | 'critical' = 'none';
+  if (isBelowTarget) {
+    if (attendanceGap > 8) {
+      warningSeverity = 'critical';
+    } else if (attendanceGap > 3) {
+      warningSeverity = 'moderate';
+    } else {
+      warningSeverity = 'mild';
+    }
+  }
+
+  if (isBelowTarget) {
     // Days needed to recover: (attended + x) / (conducted + x) >= targetFraction
     recoveryDaysNeeded = Math.ceil((targetFraction * conducted - attended) / (1 - targetFraction));
-    attendanceStatusText = `Shortage alert! Attend next ${Math.max(1, recoveryDaysNeeded)} consecutive days to reach ${targetThreshold}%.`;
+    attendanceStatusText = `Shortage alert! Attend next ${Math.max(1, recoveryDaysNeeded)} consecutive days to reach your ${targetThreshold}% target.`;
   } else {
     // Can skip based on current conducted classes:
     immediateSafeBunkDays = Math.floor((attended - targetFraction * conducted) / targetFraction);
     attendanceStatusText = immediateSafeBunkDays > 0 
-      ? `You can safely take leave for ${immediateSafeBunkDays} ${immediateSafeBunkDays === 1 ? 'day' : 'days'} now and stay above ${targetThreshold}%. (Total ${termSafeBunksRemaining} leaves left across term)`
+      ? `You can safely take leave for ${immediateSafeBunkDays} ${immediateSafeBunkDays === 1 ? 'day' : 'days'} now and stay above your ${targetThreshold}% target. (Total ${termSafeBunksRemaining} leaves left across term)`
       : `Right on track! Maintain regular attendance above your ${targetThreshold}% requirement.`;
   }
 
@@ -545,6 +561,80 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
         </div>
       </div>
 
+      {/* CONDITIONAL ATTENDANCE WARNING CARD: ONLY SHOWN WHEN ACTUAL % < USER TARGET % */}
+      {isBelowTarget ? (
+        <div 
+          role="alert"
+          aria-live="assertive"
+          className={`p-4 sm:p-5 rounded-2xl border transition-all space-y-3 ${
+            warningSeverity === 'critical'
+              ? 'bg-rose-50 border-rose-300 text-rose-950 ring-1 ring-rose-300 shadow-xs'
+              : warningSeverity === 'moderate'
+              ? 'bg-orange-50 border-orange-300 text-orange-950 ring-1 ring-orange-300 shadow-xs'
+              : 'bg-amber-50 border-amber-300 text-amber-950 ring-1 ring-amber-300 shadow-xs'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="flex items-start gap-3">
+              <div className={`p-2 rounded-xl flex-shrink-0 mt-0.5 ${
+                warningSeverity === 'critical' ? 'bg-rose-200 text-rose-900' : 'bg-amber-200 text-amber-900'
+              }`}>
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h4 className="text-sm sm:text-base font-bold font-classic">
+                    {warningSeverity === 'critical' 
+                      ? '🚨 Critical Attendance Shortage Warning' 
+                      : warningSeverity === 'moderate' 
+                      ? '⚠️ High Attendance Shortage Warning' 
+                      : '⚠️ Attendance Warning'}
+                  </h4>
+                  <span className={`px-2.5 py-0.5 rounded-full text-[11px] font-black tracking-wide ${
+                    warningSeverity === 'critical' ? 'bg-rose-600 text-white animate-pulse' : 'bg-amber-600 text-white'
+                  }`}>
+                    -{attendanceGap}% Shortfall
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm font-medium leading-relaxed">
+                  Your attendance is below your expected percentage. Current: <strong>{currentPercentage}%</strong> | Expected Target: <strong>{targetThreshold}%</strong>. Attend upcoming classes regularly.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 pt-2.5 border-t border-current/15 text-xs flex-wrap">
+            <div className="flex items-center gap-1.5 font-semibold">
+              <span>Required Recovery:</span>
+              <span className="underline decoration-2">Attend the next {Math.max(1, recoveryDaysNeeded)} consecutive classes</span>
+              <span>to cross above your {targetThreshold}% requirement.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsEditingSettings(true)}
+              className="text-[11px] font-bold underline hover:opacity-80 cursor-pointer ml-auto"
+            >
+              Adjust Target % ({targetThreshold}%)
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="p-3.5 rounded-2xl bg-emerald-50/80 border border-emerald-200 text-emerald-950 flex items-center justify-between gap-3 text-xs">
+          <div className="flex items-center gap-2.5">
+            <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+            <div>
+              <span className="font-bold">Attendance On Track (No Warning):</span>
+              <span className="ml-1 text-emerald-900">
+                Your current attendance of <strong>{currentPercentage}%</strong> meets or exceeds your expected target of <strong>{targetThreshold}%</strong>.
+              </span>
+            </div>
+          </div>
+          <span className="text-[11px] px-2.5 py-0.5 rounded-full bg-emerald-200 text-emerald-900 font-bold hidden sm:inline">
+            Safe ({immediateSafeBunkDays} safe bunks)
+          </span>
+        </div>
+      )}
+
       {/* EDIT WORKING DAYS & ATTENDANCE SETTINGS MODAL */}
       {isEditingSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-purple-950/60 backdrop-blur-xs animate-fadeIn">
@@ -598,14 +688,14 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       schedulePattern === '5_day'
                         ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-purple-50/40'
+                        : 'border-purple-200 bg-purple-50/20 hover:bg-purple-50/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-purple-950">🎓 5-Day Week</span>
                       {schedulePattern === '5_day' && <span className="text-xs text-purple-700 font-bold">✓</span>}
                     </div>
-                    <span className="text-[11px] text-slate-500 block mt-0.5">Monday to Friday (5 days/week)</span>
+                    <span className="text-[11px] text-purple-600/80 block mt-0.5">Monday to Friday (5 days/week)</span>
                   </button>
 
                   <button
@@ -614,14 +704,14 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       schedulePattern === '6_day'
                         ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-purple-50/40'
+                        : 'border-purple-200 bg-purple-50/20 hover:bg-purple-50/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-purple-950">🏢 6-Day Week</span>
                       {schedulePattern === '6_day' && <span className="text-xs text-purple-700 font-bold">✓</span>}
                     </div>
-                    <span className="text-[11px] text-slate-500 block mt-0.5">Monday to Saturday (6 days/week)</span>
+                    <span className="text-[11px] text-purple-600/80 block mt-0.5">Monday to Saturday (6 days/week)</span>
                   </button>
 
                   <button
@@ -630,14 +720,14 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       schedulePattern === 'custom_weekly'
                         ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-purple-50/40'
+                        : 'border-purple-200 bg-purple-50/20 hover:bg-purple-50/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-purple-950">⚙️ Custom Days / Wk</span>
                       {schedulePattern === 'custom_weekly' && <span className="text-xs text-purple-700 font-bold">✓</span>}
                     </div>
-                    <span className="text-[11px] text-slate-500 block mt-0.5">Specify active days per week</span>
+                    <span className="text-[11px] text-purple-600/80 block mt-0.5">Specify active days per week</span>
                   </button>
 
                   <button
@@ -646,14 +736,14 @@ export const InstitutionAttendanceTracker: React.FC<InstitutionAttendanceTracker
                     className={`p-3 rounded-2xl border text-left transition-all cursor-pointer ${
                       schedulePattern === 'custom_total'
                         ? 'border-purple-600 bg-purple-50 ring-2 ring-purple-300'
-                        : 'border-slate-200 bg-slate-50/50 hover:bg-purple-50/40'
+                        : 'border-purple-200 bg-purple-50/20 hover:bg-purple-50/60'
                     }`}
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-purple-950">📅 Direct Total Days</span>
                       {schedulePattern === 'custom_total' && <span className="text-xs text-purple-700 font-bold">✓</span>}
                     </div>
-                    <span className="text-[11px] text-slate-500 block mt-0.5">Enter exact term working days</span>
+                    <span className="text-[11px] text-purple-600/80 block mt-0.5">Enter exact term working days</span>
                   </button>
                 </div>
               </div>
