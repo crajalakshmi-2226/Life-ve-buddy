@@ -275,6 +275,8 @@ export interface AlertNotificationItem {
   timestamp: number;
   dateStr: string;
   isRead: boolean;
+  completed?: boolean;
+  dueDate?: string;
   actionRequired: boolean;
   recommendedActions: string[];
   earlyWarning?: boolean;
@@ -512,7 +514,6 @@ export type BottomOptionAction =
   | 'stretch' 
   | 'schedule' 
   | 'exams' 
-  | 'alerts' 
   | 'holidays' 
   | 'history' 
   | 'birthday' 

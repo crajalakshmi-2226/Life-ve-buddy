@@ -52,11 +52,10 @@ interface TodaySectionProps {
   onOpenStretchRelief?: () => void;
   onOpenClassSchedule?: () => void;
   onOpenExamSchedule?: () => void;
-  onOpenAlerts?: () => void;
+  onOpenAttendance?: () => void;
   onOpenHolidays?: () => void;
   onOpenQuickReminder?: () => void;
   onOpenComplaints?: () => void;
-  criticalAlertsCount?: number;
   attendanceConfig?: InstitutionAttendanceConfig;
 }
 
@@ -84,11 +83,10 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
   onOpenStretchRelief,
   onOpenClassSchedule,
   onOpenExamSchedule,
-  onOpenAlerts,
+  onOpenAttendance,
   onOpenHolidays,
   onOpenQuickReminder,
   onOpenComplaints,
-  criticalAlertsCount = 0,
   attendanceConfig
 }) => {
   const [winCelebrated, setWinCelebrated] = useState(false);
@@ -385,46 +383,40 @@ export const TodaySection: React.FC<TodaySectionProps> = ({
           </div>
         )}
 
-        {/* CARD 2: AI ACADEMIC WARNING (ONLY WHEN ACTUAL % < USER TARGET % OR CRITICAL ALERTS) */}
-        {(isAttendanceBelowTarget || criticalAlertsCount > 0) && (
+        {/* CARD 2: ATTENDANCE WARNING (ONLY WHEN ACTUAL % < USER TARGET %) */}
+        {isAttendanceBelowTarget && (
           <div
-            onClick={onOpenAlerts}
+            onClick={onOpenAttendance}
             className={`rounded-2xl p-4 border flex items-start justify-between gap-3 shadow-2xs cursor-pointer transition-all group ${
-              isAttendanceBelowTarget && attendanceShortfall > 8
+              attendanceShortfall > 8
                 ? 'bg-rose-50 border-rose-300 text-rose-950 hover:bg-rose-100/90'
                 : 'bg-amber-50 border-amber-300 text-amber-950 hover:bg-amber-100/90'
             }`}
           >
             <div className="flex items-start gap-3">
               <div className={`p-2 rounded-xl flex-shrink-0 mt-0.5 ${
-                isAttendanceBelowTarget && attendanceShortfall > 8 ? 'bg-rose-200 text-rose-900' : 'bg-amber-200 text-amber-900'
+                attendanceShortfall > 8 ? 'bg-rose-200 text-rose-900' : 'bg-amber-200 text-amber-900'
               }`}>
                 <AlertTriangle className="w-4 h-4" />
               </div>
               <div className="text-xs sm:text-sm">
                 <div className="font-bold font-classic flex items-center gap-2 flex-wrap">
-                  <span>
-                    {isAttendanceBelowTarget 
-                      ? '⚠️ AI Academic Warning: Attendance Shortage' 
-                      : '⚠️ AI Academic Warning & Risk Alerts'}
-                  </span>
+                  <span>⚠️ Attendance Warning: Shortage Detected</span>
                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                    isAttendanceBelowTarget && attendanceShortfall > 8 
+                    attendanceShortfall > 8 
                       ? 'bg-rose-600 text-white animate-pulse' 
                       : 'bg-amber-600 text-white'
                   }`}>
-                    {isAttendanceBelowTarget ? `-${attendanceShortfall}% Shortfall` : `${criticalAlertsCount} Alert${criticalAlertsCount !== 1 ? 's' : ''}`}
+                    -{attendanceShortfall}% Shortfall
                   </span>
                 </div>
                 <p className="text-xs mt-0.5 font-medium leading-relaxed">
-                  {isAttendanceBelowTarget 
-                    ? `Your attendance is below your expected percentage. Current: ${currentAtt}% | Expected Target: ${targetAtt}%. Attend upcoming classes regularly.`
-                    : 'Attendance and academic risk detected in core subjects. Check syllabus and defense checklist.'}
+                  Your attendance is below your expected percentage. Current: {currentAtt}% | Expected Target: {targetAtt}%. Attend upcoming classes regularly.
                 </p>
               </div>
             </div>
             <span className="text-xs font-bold text-purple-900 group-hover:translate-x-1 transition-transform self-center hidden sm:inline whitespace-nowrap">
-              Open AI Defense ➔
+              View Attendance ➔
             </span>
           </div>
         )}

@@ -18,7 +18,6 @@ import { FocusTimerModal } from './components/FocusTimerModal';
 import { BodyStretchRelief } from './components/BodyStretchRelief';
 import { BottomOptionsMenu } from './components/BottomOptionsMenu';
 import { AndroidFrame } from './components/AndroidFrame';
-import { AIAlertSystemContainer } from './components/AIAlertSystem/AIAlertSystemContainer';
 import { BirthdayModal } from './components/BirthdayModal';
 import { AddReminderModal } from './components/AddReminderModal';
 import { HistoryPage } from './components/HistoryPage';
@@ -34,9 +33,6 @@ import {
   ClassPeriod, 
   ExamItem, 
   HolidayItem,
-  StudentAcademicProfile, 
-  AlertNotificationItem, 
-  ActionRecommendation,
   BirthdayData,
   InstitutionAttendanceConfig,
   HistoryRecordItem,
@@ -51,13 +47,6 @@ import {
   applyThemeColorToDocument, 
   DEFAULT_THEME_COLOR 
 } from './utils/themeHelper';
-import { 
-  DEFAULT_STUDENT_PROFILE, 
-  evaluateStudentRisk, 
-  generatePersonalizedAlerts, 
-  generateActionRecommendations,
-  recomputeOverallAttendance
-} from './utils/aiRiskEngine';
 import { playSuccessChime } from './utils/audio';
 import { Check, Info, ShieldCheck, Sparkles, ArrowLeft, Palmtree, History, Cake } from 'lucide-react';
 
@@ -80,10 +69,14 @@ export default function App() {
   const scheduleSectionRef = useRef<HTMLDivElement>(null);
   const examSectionRef = useRef<HTMLDivElement>(null);
   const holidaySectionRef = useRef<HTMLDivElement>(null);
-  const aiAlertSectionRef = useRef<HTMLDivElement>(null);
   const attendanceSectionRef = useRef<HTMLDivElement>(null);
   const habitsSectionRef = useRef<HTMLDivElement>(null);
   const complaintsSectionRef = useRef<HTMLDivElement>(null);
+
+  // Clean up any deactivated alert states
+  useEffect(() => {
+    localStorage.removeItem("customStudentAlerts");
+  }, []);
 
   // State Initialization
   const [quote, setQuote] = useState<DailyQuote>({
@@ -111,37 +104,6 @@ export default function App() {
       smallWin: "",
       lastActiveDate: getTodayDateString()
     };
-  });
-
-  // AI-Based Alert System State
-  const [studentProfile, setStudentProfile] = useState<StudentAcademicProfile>(() => {
-    const saved = localStorage.getItem("studentProfileData");
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return {
-          ...DEFAULT_STUDENT_PROFILE,
-          ...parsed
-        };
-      } catch (e) { console.warn(e); }
-    }
-    return DEFAULT_STUDENT_PROFILE;
-  });
-
-  const [studentAlerts, setStudentAlerts] = useState<AlertNotificationItem[]>(() => {
-    const saved = localStorage.getItem("studentAlertsData");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
-    }
-    return generatePersonalizedAlerts(DEFAULT_STUDENT_PROFILE);
-  });
-
-  const [studentRecommendations, setStudentRecommendations] = useState<ActionRecommendation[]>(() => {
-    const saved = localStorage.getItem("studentRecommendationsData");
-    if (saved) {
-      try { return JSON.parse(saved); } catch (e) { console.warn(e); }
-    }
-    return generateActionRecommendations(DEFAULT_STUDENT_PROFILE);
   });
 
   const [classPeriods, setClassPeriods] = useState<ClassPeriod[]>(() => {
@@ -270,7 +232,7 @@ export default function App() {
     return [
       {
         id: "rem_sample_1",
-        subject: "Submit DSP Lab Report & Observations",
+        subject: "Review lecture notes & study plan",
         date: todayStr,
         time: "17:00",
         remindMeAt: `${todayStr}T16:30`,
@@ -468,13 +430,6 @@ export default function App() {
     });
   };
 
-  // Smooth scroll to AI Alert System section
-  const scrollToAlerts = () => {
-    if (aiAlertSectionRef.current) {
-      aiAlertSectionRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
-  };
-
   // Smooth scroll to Class Schedule section
   const scrollToSchedule = () => {
     if (scheduleSectionRef.current) {
@@ -519,54 +474,6 @@ export default function App() {
       complaintsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
   };
-
-  // Sync Student Profile changes with AI Risk Engine & Local Storage
-  const handleUpdateStudentProfile = (partial: Partial<StudentAcademicProfile>) => {
-    setStudentProfile(prev => {
-      const merged: StudentAcademicProfile = { ...prev, ...partial };
-      
-      // If subjects were updated, dynamically recompute overall aggregate attendance %
-      if (partial.subjects && partial.subjects.length > 0) {
-        merged.overallAttendance = recomputeOverallAttendance(merged.subjects);
-      }
-
-      // Recalculate risk evaluation
-      const evalRes = evaluateStudentRisk(merged);
-      merged.riskScore = evalRes.riskScore;
-      merged.riskLevel = evalRes.riskLevel;
-      if (!partial.subjects && evalRes.overallAttendance !== undefined) {
-        merged.overallAttendance = evalRes.overallAttendance;
-      }
-
-      // Regenerate alerts and recommendations
-      const newAlerts = generatePersonalizedAlerts(merged);
-      const newRecs = generateActionRecommendations(merged);
-      setStudentAlerts(newAlerts);
-      setStudentRecommendations(newRecs);
-
-      return merged;
-    });
-  };
-
-  // Sync User Name with Student Academic Profile
-  useEffect(() => {
-    if (todayData.userName && todayData.userName !== studentProfile.studentName) {
-      setStudentProfile(prev => ({ ...prev, studentName: todayData.userName }));
-    }
-  }, [todayData.userName]);
-
-  // Persist AI Alert System state
-  useEffect(() => {
-    localStorage.setItem("studentProfileData", JSON.stringify(studentProfile));
-  }, [studentProfile]);
-
-  useEffect(() => {
-    localStorage.setItem("studentAlertsData", JSON.stringify(studentAlerts));
-  }, [studentAlerts]);
-
-  useEffect(() => {
-    localStorage.setItem("studentRecommendationsData", JSON.stringify(studentRecommendations));
-  }, [studentRecommendations]);
 
   // Check and perform midnight reset
   useEffect(() => {
@@ -811,10 +718,6 @@ export default function App() {
     return !countdown.isPast || countdown.isToday || countdown.isOngoing;
   }).length;
 
-  // Unread & critical alerts count for header & badges
-  const unreadAlertsCount = studentAlerts.filter(a => !a.isRead).length;
-  const criticalAlertsCount = studentAlerts.filter(a => a.priority === 'Emergency' || a.priority === 'High' || a.riskLevel === 'Critical').length;
-
   // Birthday indicators for header badge
   const hasBirthdayToday = (birthdayData.birthdayDate ? isBirthdayToday(birthdayData.birthdayDate) : false) ||
     (birthdayData.extraBirthdays ? birthdayData.extraBirthdays.some(b => isBirthdayToday(b.birthdayDate)) : false);
@@ -857,7 +760,6 @@ export default function App() {
           onOpenStretchRelief={() => setIsStretchOpen(true)}
           onOpenSchedule={scrollToSchedule}
           onOpenExams={scrollToExams}
-          onOpenAlerts={scrollToAlerts}
           onOpenHolidays={() => setActiveTab('holidays')}
           onOpenBirthday={() => setIsBirthdayModalOpen(true)}
           hasBirthdayToday={hasBirthdayToday}
@@ -866,9 +768,6 @@ export default function App() {
           onChangeTab={(tab) => setActiveTab(tab)}
           upcomingExamsCount={upcomingExamsCount}
           upcomingHolidaysCount={upcomingHolidaysCount}
-          unreadAlertsCount={unreadAlertsCount}
-          criticalAlertsCount={criticalAlertsCount}
-          riskLevel={studentProfile.riskLevel}
           totalStreak={totalStreak}
         />
 
@@ -1010,14 +909,13 @@ export default function App() {
                 onOpenStretchRelief={() => setIsStretchOpen(true)}
                 onOpenClassSchedule={scrollToSchedule}
                 onOpenExamSchedule={scrollToExams}
-                onOpenAlerts={scrollToAlerts}
+                onOpenAttendance={scrollToAttendance}
                 onOpenHolidays={() => setActiveTab('holidays')}
                 onOpenComplaints={scrollToComplaints}
                 onOpenQuickReminder={() => {
                   setEditingReminder(null);
                   setIsReminderModalOpen(true);
                 }}
-                criticalAlertsCount={criticalAlertsCount}
               />
 
               {/* SECTION 2: Institutional Attendance Tracker (Days Can Change By User & Daily Prompt) */}
@@ -1026,10 +924,6 @@ export default function App() {
                   config={attendanceConfig}
                   onUpdateConfig={(newCfg) => {
                     setAttendanceConfig(newCfg);
-                    handleUpdateStudentProfile({ 
-                      overallAttendance: newCfg.attendancePercentage,
-                      semesterWorkingDays: newCfg.totalWorkingDays
-                    });
                   }}
                   soundEnabled={soundEnabled}
                   onToast={showToast}
@@ -1037,21 +931,7 @@ export default function App() {
                 />
               </div>
 
-              {/* SECTION 3: AI-BASED ALERT SYSTEM (Continuous Data Monitoring, Risk Detection & Simulator) */}
-              <div ref={aiAlertSectionRef}>
-                <AIAlertSystemContainer
-                  profile={studentProfile}
-                  alerts={studentAlerts}
-                  recommendations={studentRecommendations}
-                  onUpdateProfile={handleUpdateStudentProfile}
-                  onUpdateAlerts={setStudentAlerts}
-                  onUpdateRecommendations={setStudentRecommendations}
-                  soundEnabled={soundEnabled}
-                  onToast={showToast}
-                />
-              </div>
-
-              {/* SECTION 4: Exam Schedule & Daily Countdown Tracker */}
+              {/* SECTION 3: Exam Schedule & Daily Countdown Tracker */}
               <div ref={examSectionRef}>
                 <ExamScheduleTracker
                   exams={exams}
@@ -1206,7 +1086,6 @@ export default function App() {
           onOpenStretch={() => setIsStretchOpen(true)}
           onOpenSchedule={scrollToSchedule}
           onOpenExams={scrollToExams}
-          onOpenAlerts={scrollToAlerts}
           onOpenHolidays={() => setActiveTab('holidays')}
           onOpenHistory={() => setActiveTab('history')}
           onOpenBirthday={() => setIsBirthdayModalOpen(true)}

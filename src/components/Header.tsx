@@ -13,7 +13,6 @@ import {
   Check, 
   X, 
   Bell, 
-  ShieldAlert, 
   Palmtree,
   Cake,
   History,
@@ -21,7 +20,6 @@ import {
   User
 } from 'lucide-react';
 import { formatHeaderDate } from '../utils/helpers';
-import { RiskLevel } from '../types';
 import { PWAInstallButton } from './PWAInstallButton';
 
 interface HeaderProps {
@@ -41,13 +39,9 @@ interface HeaderProps {
   onOpenStretchRelief: () => void;
   onOpenSchedule?: () => void;
   onOpenExams?: () => void;
-  onOpenAlerts?: () => void;
   onOpenHolidays?: () => void;
   upcomingExamsCount?: number;
   upcomingHolidaysCount?: number;
-  unreadAlertsCount?: number;
-  criticalAlertsCount?: number;
-  riskLevel?: RiskLevel;
   totalStreak: number;
 }
 
@@ -68,13 +62,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenStretchRelief,
   onOpenSchedule,
   onOpenExams,
-  onOpenAlerts,
   onOpenHolidays,
   upcomingExamsCount = 0,
   upcomingHolidaysCount = 0,
-  unreadAlertsCount = 0,
-  criticalAlertsCount = 0,
-  riskLevel,
   totalStreak
 }) => {
   const currentDate = formatHeaderDate();
@@ -282,24 +272,6 @@ export const Header: React.FC<HeaderProps> = ({
                   {extraBirthdaysCount}
                 </span>
               ) : null}
-            </button>
-          )}
-
-          {/* AI Alert System quick launcher */}
-          {onOpenAlerts && (
-            <button
-              type="button"
-              onClick={onOpenAlerts}
-              title="Jump to AI-Based Alert System"
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-purple-800 via-indigo-800 to-purple-900 hover:from-purple-900 hover:to-indigo-900 border border-purple-700 transition-all shadow-2xs hover:shadow-xs cursor-pointer"
-            >
-              <ShieldAlert className="w-3.5 h-3.5 text-amber-300" />
-              <span className="hidden sm:inline">Alerts</span>
-              {unreadAlertsCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-rose-500 text-white animate-pulse">
-                  {unreadAlertsCount}
-                </span>
-              )}
             </button>
           )}
 

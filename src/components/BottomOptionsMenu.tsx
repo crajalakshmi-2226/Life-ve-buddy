@@ -19,7 +19,6 @@ interface BottomOptionsMenuProps {
   onOpenStretch: () => void;
   onOpenSchedule: () => void;
   onOpenExams: () => void;
-  onOpenAlerts: () => void;
   onOpenHolidays: () => void;
   onOpenHistory: () => void;
   onOpenBirthday: () => void;
@@ -35,20 +34,18 @@ export const DEFAULT_BOTTOM_OPTIONS: BottomOptionItem[] = [
   { id: 'opt-stretch', label: 'Activity', icon: '🧘', actionType: 'stretch', colorTheme: 'fuchsia', isDefault: true },
   { id: 'opt-schedule', label: 'Classes', icon: '📅', actionType: 'schedule', colorTheme: 'indigo', isDefault: true },
   { id: 'opt-exams', label: 'Exams', icon: '🎓', actionType: 'exams', colorTheme: 'purple', isDefault: true },
-  { id: 'opt-alerts', label: 'Alerts', icon: '🚨', actionType: 'alerts', colorTheme: 'rose', isDefault: true },
   { id: 'opt-holidays', label: 'Holidays', icon: '🌴', actionType: 'holidays', colorTheme: 'amber', isDefault: true },
   { id: 'opt-attendance', label: 'Attendance', icon: '📊', actionType: 'attendance', colorTheme: 'emerald', isDefault: true },
   { id: 'opt-history', label: 'History', icon: '📜', actionType: 'history', colorTheme: 'sky', isDefault: true }
 ];
 
-const EMOJI_PRESETS = ['⏱️', '🧘', '📅', '🎓', '🚨', '🌴', '📊', '📜', '🎂', '🎯', '🧪', '💬', '🏃', '💧', '📚', '💻', '🚀', '☕', '💡', '🔔'];
+const EMOJI_PRESETS = ['⏱️', '🧘', '📅', '🎓', '🌴', '📊', '📜', '🎂', '🎯', '🧪', '💬', '🏃', '💧', '📚', '💻', '🚀', '☕', '💡', '🔔'];
 
 export const BottomOptionsMenu: React.FC<BottomOptionsMenuProps> = ({
   onOpenTimer,
   onOpenStretch,
   onOpenSchedule,
   onOpenExams,
-  onOpenAlerts,
   onOpenHolidays,
   onOpenHistory,
   onOpenBirthday,
@@ -63,7 +60,10 @@ export const BottomOptionsMenu: React.FC<BottomOptionsMenuProps> = ({
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const filtered = parsed.filter((item: any) => item.actionType !== 'alerts' && item.id !== 'opt-alerts');
+          if (filtered.length > 0) return filtered;
+        }
       } catch (e) {
         console.warn('Failed to parse bottomMenuOptions', e);
       }
@@ -101,9 +101,6 @@ export const BottomOptionsMenu: React.FC<BottomOptionsMenuProps> = ({
         break;
       case 'exams':
         onOpenExams();
-        break;
-      case 'alerts':
-        onOpenAlerts();
         break;
       case 'holidays':
         onOpenHolidays();
@@ -353,7 +350,6 @@ export const BottomOptionsMenu: React.FC<BottomOptionsMenuProps> = ({
                       >
                         <option value="schedule">📅 Class Timetable</option>
                         <option value="exams">🎓 Exam Schedules</option>
-                        <option value="alerts">🚨 AI Early Warning Alerts</option>
                         <option value="timer">⏱️ Focus Timer</option>
                         <option value="stretch">🧘 Physical Activity Reminders</option>
                         <option value="attendance">📊 Attendance Tracker</option>
