@@ -74,66 +74,73 @@ function persistSubscriptions() {
   }
 }
 
+// 3. Persistent Scheduled Reminders Database
+const REMINDERS_FILE = path.join(DATA_DIR, 'scheduled-reminders.json');
+
+export interface ScheduledReminderRecord {
+  id: string;
+  title: string;
+  message: string;
+  scheduledTime: number; // UTC Epoch timestamp in milliseconds
+  remindMeAt: string; // ISO or local date-time string YYYY-MM-DDTHH:mm
+  date: string; // YYYY-MM-DD
+  time: string; // HH:mm
+  timezone: string; // e.g. "Asia/Kolkata", "America/New_York"
+  recurrence: 'none' | 'daily' | 'weekdays' | 'weekly' | 'hourly';
+  targetUrl: string; // e.g. "/?tab=reminders"
+  status: 'pending' | 'sent' | 'completed' | 'cancelled';
+  createdAt: number;
+  completed: boolean;
+  notifiedAt?: number;
+}
+
+let scheduledReminders: ScheduledReminderRecord[] = [];
+if (fs.existsSync(REMINDERS_FILE)) {
+  try {
+    scheduledReminders = JSON.parse(fs.readFileSync(REMINDERS_FILE, 'utf-8'));
+  } catch (err) {
+    console.warn('Failed to parse scheduled reminders file:', err);
+    scheduledReminders = [];
+  }
+}
+
+function persistReminders() {
+  try {
+    fs.writeFileSync(REMINDERS_FILE, JSON.stringify(scheduledReminders, null, 2), 'utf-8');
+  } catch (err) {
+    console.error('Failed to save scheduled reminders:', err);
+  }
+}
+
+// Helper to calculate next recurrence time
+function calculateNextRecurrence(currentEpoch: number, recurrence: string): number {
+  const d = new Date(currentEpoch);
+  if (recurrence === 'hourly') {
+    return currentEpoch + 60 * 60 * 1000;
+  }
+  if (recurrence === 'daily') {
+    return currentEpoch + 24 * 60 * 60 * 1000;
+  }
+  if (recurrence === 'weekdays') {
+    d.setDate(d.getDate() + 1);
+    // If Saturday, jump to Monday (+2)
+    if (d.getDay() === 6) d.setDate(d.getDate() + 2);
+    // If Sunday, jump to Monday (+1)
+    else if (d.getDay() === 0) d.setDate(d.getDate() + 1);
+    return d.getTime();
+  }
+  if (recurrence === 'weekly') {
+    return currentEpoch + 7 * 24 * 60 * 60 * 1000;
+  }
+  return currentEpoch + 24 * 60 * 60 * 1000;
+}
+
 // Middleware
 app.use(express.json());
 
 // ============================================================
-// WEB PUSH NOTIFICATION API ENDPOINTS
+// WEB PUSH NOTIFICATION DISPATCH ENGINE
 // ============================================================
-
-// Return VAPID Public Key for client subscription
-app.get('/api/push/vapid-public-key', (_req, res) => {
-  res.json({
-    publicKey: vapidKeys.publicKey,
-    subject: vapidSubject
-  });
-});
-
-// Register or update push subscription
-app.post('/api/push/subscribe', (req, res) => {
-  const { subscription, userAgent } = req.body;
-  if (!subscription || !subscription.endpoint || !subscription.keys) {
-    res.status(400).json({ error: 'Invalid subscription payload. Must include endpoint and keys.' });
-    return;
-  }
-
-  const existingIndex = subscriptions.findIndex(s => s.endpoint === subscription.endpoint);
-  const newRecord: PushSubRecord = {
-    endpoint: subscription.endpoint,
-    keys: subscription.keys,
-    expirationTime: subscription.expirationTime || null,
-    userAgent: userAgent || 'Unknown browser',
-    createdAt: Date.now()
-  };
-
-  if (existingIndex >= 0) {
-    subscriptions[existingIndex] = newRecord;
-  } else {
-    subscriptions.push(newRecord);
-  }
-
-  persistSubscriptions();
-  console.log(`[WebPush] Subscribed device (${subscriptions.length} total)`);
-  res.json({ success: true, count: subscriptions.length });
-});
-
-// Unsubscribe
-app.post('/api/push/unsubscribe', (req, res) => {
-  const { endpoint } = req.body;
-  if (!endpoint) {
-    res.status(400).json({ error: 'Endpoint is required to unsubscribe.' });
-    return;
-  }
-
-  const initialCount = subscriptions.length;
-  subscriptions = subscriptions.filter(s => s.endpoint !== endpoint);
-  if (subscriptions.length !== initialCount) {
-    persistSubscriptions();
-  }
-
-  console.log(`[WebPush] Unsubscribed device (${subscriptions.length} remaining)`);
-  res.json({ success: true, count: subscriptions.length });
-});
 
 // Helper to send push to all registered devices
 async function dispatchPushNotifications(payload: {
@@ -203,7 +210,289 @@ async function dispatchPushNotifications(payload: {
   return { sentCount, removedExpiredCount: expiredEndpoints.length };
 }
 
-// Trigger push notification (instant or delayed)
+// ============================================================
+// BACKGROUND SCHEDULER ENGINE (Runs continuously on Node Server)
+// Checks every 10 seconds for scheduled notifications that have arrived
+// ============================================================
+async function checkAndDispatchScheduledReminders() {
+  const now = Date.now();
+  let hasUpdates = false;
+
+  for (const rem of scheduledReminders) {
+    if (rem.status === 'pending' && !rem.completed && rem.scheduledTime <= now) {
+      console.log(`[Scheduler] ⏰ Firing scheduled reminder: "${rem.title}" (ID: ${rem.id}) at ${new Date(now).toISOString()}`);
+      
+      // Dispatch Web Push notification through FCM to wake up Android Chrome
+      await dispatchPushNotifications({
+        title: `🔔 ${rem.title}`,
+        body: rem.message || `Reminder for ${rem.date} at ${rem.time}`,
+        url: rem.targetUrl || '/?tab=reminders',
+        tag: `rem-${rem.id}`
+      });
+
+      rem.notifiedAt = now;
+
+      // Check if recurring
+      if (rem.recurrence && rem.recurrence !== 'none') {
+        const nextTime = calculateNextRecurrence(rem.scheduledTime, rem.recurrence);
+        console.log(`[Scheduler] Rescheduling recurring (${rem.recurrence}) reminder "${rem.title}" to ${new Date(nextTime).toISOString()}`);
+        rem.scheduledTime = nextTime;
+        rem.status = 'pending';
+      } else {
+        rem.status = 'sent';
+      }
+      hasUpdates = true;
+    }
+  }
+
+  if (hasUpdates) {
+    persistReminders();
+  }
+}
+
+// Start continuous background scheduler loop (runs every 10s)
+const SCHEDULER_INTERVAL_MS = 10000;
+setInterval(() => {
+  checkAndDispatchScheduledReminders().catch(err => {
+    console.error('[Scheduler] Error in checkAndDispatchScheduledReminders:', err);
+  });
+}, SCHEDULER_INTERVAL_MS);
+
+// Initial check on server boot
+checkAndDispatchScheduledReminders().catch(() => {});
+
+// ============================================================
+// API ENDPOINTS FOR SCHEDULED REMINDERS
+// ============================================================
+
+// List all scheduled reminders
+app.get('/api/reminders', (_req, res) => {
+  res.json({
+    success: true,
+    reminders: scheduledReminders
+  });
+});
+
+// Schedule or update a reminder
+app.post('/api/reminders', async (req, res) => {
+  const { 
+    id, 
+    subject, 
+    title, 
+    message, 
+    date, 
+    time, 
+    remindMeAt, 
+    scheduledTime, 
+    timezone, 
+    recurrence, 
+    targetUrl,
+    completed
+  } = req.body;
+
+  const reminderTitle = title || subject;
+  if (!reminderTitle) {
+    res.status(400).json({ error: 'Reminder subject/title is required.' });
+    return;
+  }
+
+  // Calculate epoch scheduledTime if not explicitly provided
+  let computedScheduledTime = typeof scheduledTime === 'number' ? scheduledTime : 0;
+  if (!computedScheduledTime && remindMeAt) {
+    computedScheduledTime = new Date(remindMeAt).getTime();
+  }
+  if (!computedScheduledTime && date && time) {
+    computedScheduledTime = new Date(`${date}T${time}`).getTime();
+  }
+
+  if (!computedScheduledTime || isNaN(computedScheduledTime)) {
+    res.status(400).json({ error: 'Invalid or missing scheduled timestamp (remindMeAt / scheduledTime).' });
+    return;
+  }
+
+  const reminderId = id || `rem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+  const reminderTimezone = timezone || 'UTC';
+  const reminderRecurrence = recurrence || 'none';
+  const reminderUrl = targetUrl || '/?tab=reminders';
+
+  const existingIndex = scheduledReminders.findIndex(r => r.id === reminderId);
+  const now = Date.now();
+  const isPast = computedScheduledTime <= now;
+
+  const record: ScheduledReminderRecord = {
+    id: reminderId,
+    title: reminderTitle,
+    message: message || `Scheduled reminder for ${date || 'today'} at ${time || 'specified time'}`,
+    scheduledTime: computedScheduledTime,
+    remindMeAt: remindMeAt || new Date(computedScheduledTime).toISOString(),
+    date: date || new Date(computedScheduledTime).toISOString().split('T')[0],
+    time: time || '12:00',
+    timezone: reminderTimezone,
+    recurrence: reminderRecurrence,
+    targetUrl: reminderUrl,
+    status: isPast ? 'sent' : 'pending',
+    createdAt: existingIndex >= 0 ? scheduledReminders[existingIndex].createdAt : now,
+    completed: !!completed
+  };
+
+  if (existingIndex >= 0) {
+    scheduledReminders[existingIndex] = record;
+  } else {
+    scheduledReminders.unshift(record);
+  }
+
+  persistReminders();
+  console.log(`[Scheduler] Reminder saved: "${record.title}" scheduled for ${new Date(record.scheduledTime).toISOString()} (Timezone: ${record.timezone})`);
+
+  // If already due right now, trigger immediately
+  if (isPast && !record.completed) {
+    dispatchPushNotifications({
+      title: `🔔 ${record.title}`,
+      body: record.message,
+      url: record.targetUrl,
+      tag: `rem-${record.id}`
+    }).catch(e => console.warn('[Scheduler] Immediate dispatch notice:', e));
+  }
+
+  res.json({
+    success: true,
+    reminder: record,
+    message: `Reminder scheduled successfully on server for ${new Date(record.scheduledTime).toLocaleString()}`
+  });
+});
+
+// Delete a scheduled reminder
+app.delete('/api/reminders/:id', (req, res) => {
+  const { id } = req.params;
+  const initialLength = scheduledReminders.length;
+  scheduledReminders = scheduledReminders.filter(r => r.id !== id);
+
+  if (scheduledReminders.length !== initialLength) {
+    persistReminders();
+    console.log(`[Scheduler] Deleted reminder ID: ${id}`);
+  }
+
+  res.json({ success: true, count: scheduledReminders.length });
+});
+
+// Complete or toggle a reminder
+app.post('/api/reminders/:id/complete', (req, res) => {
+  const { id } = req.params;
+  const { completed } = req.body;
+
+  const rem = scheduledReminders.find(r => r.id === id);
+  if (rem) {
+    rem.completed = completed !== undefined ? !!completed : !rem.completed;
+    if (rem.completed) {
+      rem.status = 'completed';
+    }
+    persistReminders();
+    res.json({ success: true, reminder: rem });
+  } else {
+    res.status(404).json({ error: 'Reminder not found' });
+  }
+});
+
+// Two-way sync endpoint for client reminders
+app.post('/api/reminders/sync', (req, res) => {
+  const { reminders } = req.body;
+  if (!Array.isArray(reminders)) {
+    res.status(400).json({ error: 'reminders array required' });
+    return;
+  }
+
+  // Merge client reminders into server list
+  for (const clientRem of reminders) {
+    if (!clientRem.id) continue;
+    const existingIndex = scheduledReminders.findIndex(r => r.id === clientRem.id);
+    const scheduledTime = clientRem.scheduledTime || (clientRem.remindMeAt ? new Date(clientRem.remindMeAt).getTime() : Date.now());
+
+    const record: ScheduledReminderRecord = {
+      id: clientRem.id,
+      title: clientRem.subject || clientRem.title || 'Scheduled Reminder',
+      message: clientRem.message || `Reminder for ${clientRem.date} at ${clientRem.time}`,
+      scheduledTime,
+      remindMeAt: clientRem.remindMeAt || new Date(scheduledTime).toISOString(),
+      date: clientRem.date || new Date(scheduledTime).toISOString().split('T')[0],
+      time: clientRem.time || '12:00',
+      timezone: clientRem.timezone || 'UTC',
+      recurrence: clientRem.recurrence || 'none',
+      targetUrl: clientRem.targetUrl || '/?tab=reminders',
+      status: clientRem.notified ? 'sent' : (clientRem.status || 'pending'),
+      createdAt: clientRem.createdAt || Date.now(),
+      completed: !!clientRem.completed
+    };
+
+    if (existingIndex >= 0) {
+      scheduledReminders[existingIndex] = { ...scheduledReminders[existingIndex], ...record };
+    } else {
+      scheduledReminders.push(record);
+    }
+  }
+
+  persistReminders();
+  res.json({ success: true, reminders: scheduledReminders });
+});
+
+// ============================================================
+// WEB PUSH SUBSCRIPTION & TESTING ENDPOINTS
+// ============================================================
+
+// Return VAPID Public Key for client subscription
+app.get('/api/push/vapid-public-key', (_req, res) => {
+  res.json({
+    publicKey: vapidKeys.publicKey,
+    subject: vapidSubject
+  });
+});
+
+// Register or update push subscription
+app.post('/api/push/subscribe', (req, res) => {
+  const { subscription, userAgent } = req.body;
+  if (!subscription || !subscription.endpoint || !subscription.keys) {
+    res.status(400).json({ error: 'Invalid subscription payload. Must include endpoint and keys.' });
+    return;
+  }
+
+  const existingIndex = subscriptions.findIndex(s => s.endpoint === subscription.endpoint);
+  const newRecord: PushSubRecord = {
+    endpoint: subscription.endpoint,
+    keys: subscription.keys,
+    expirationTime: subscription.expirationTime || null,
+    userAgent: userAgent || 'Unknown browser',
+    createdAt: Date.now()
+  };
+
+  if (existingIndex >= 0) {
+    subscriptions[existingIndex] = newRecord;
+  } else {
+    subscriptions.push(newRecord);
+  }
+
+  persistSubscriptions();
+  console.log(`[WebPush] Subscribed device (${subscriptions.length} total)`);
+  res.json({ success: true, count: subscriptions.length });
+});
+
+// Unsubscribe
+app.post('/api/push/unsubscribe', (req, res) => {
+  const { endpoint } = req.body;
+  if (!endpoint) {
+    res.status(400).json({ error: 'Endpoint is required to unsubscribe.' });
+    return;
+  }
+
+  const initialCount = subscriptions.length;
+  subscriptions = subscriptions.filter(s => s.endpoint !== endpoint);
+  if (subscriptions.length !== initialCount) {
+    persistSubscriptions();
+  }
+
+  console.log(`[WebPush] Unsubscribed device (${subscriptions.length} remaining)`);
+  res.json({ success: true, count: subscriptions.length });
+});
+
+// Trigger push notification (instant or delayed testing)
 app.post('/api/push/send', async (req, res) => {
   const { title, body, url, tag, delaySeconds } = req.body;
   if (!title || !body) {
@@ -241,12 +530,15 @@ app.post('/api/push/send', async (req, res) => {
   });
 });
 
-// Check status of push service
+// Check status of push service & scheduler
 app.get('/api/push/status', (_req, res) => {
+  const pendingReminders = scheduledReminders.filter(r => r.status === 'pending' && !r.completed);
   res.json({
     subscribersCount: subscriptions.length,
     vapidConfigured: !!vapidKeys.publicKey,
-    vapidPublicKey: vapidKeys.publicKey
+    vapidPublicKey: vapidKeys.publicKey,
+    pendingRemindersCount: pendingReminders.length,
+    totalRemindersCount: scheduledReminders.length
   });
 });
 

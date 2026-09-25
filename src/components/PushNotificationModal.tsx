@@ -29,6 +29,7 @@ import {
 } from '../utils/pushManager';
 import { sendSystemNotification } from '../utils/notifications';
 import { playAlertChime, playSuccessChime } from '../utils/audio';
+import { saveScheduledReminder, getUserTimezone } from '../utils/reminderSync';
 
 interface PushNotificationModalProps {
   isOpen: boolean;
@@ -209,6 +210,48 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
         return prev - 1;
       });
     }, 1000);
+  };
+
+  // Schedule a real persistent reminder for 1 or 2 minutes ahead on the server backend scheduler
+  const handleScheduleServerTest = async (minutes: number) => {
+    if (permission !== 'granted' || !isSubscribed) {
+      const subRes = await subscribeToPushNotifications();
+      if (!subRes.success) {
+        onToast('Please Enable Notifications First', 'Permission and push subscription are required.', 'alert');
+        return;
+      }
+      setIsSubscribed(true);
+      setPermission('granted');
+    }
+
+    const future = new Date(Date.now() + minutes * 60 * 1000);
+    const dateStr = future.toISOString().split('T')[0];
+    const hours = String(future.getHours()).padStart(2, '0');
+    const mins = String(future.getMinutes()).padStart(2, '0');
+    const timeStr = `${hours}:${mins}`;
+
+    const testReminder = {
+      id: `rem_test_${Date.now()}`,
+      subject: `Server Scheduled Test (${minutes}m)`,
+      date: dateStr,
+      time: timeStr,
+      remindMeAt: `${dateStr}T${timeStr}`,
+      scheduledTime: future.getTime(),
+      timezone: getUserTimezone(),
+      recurrence: 'none' as const,
+      targetUrl: `/?tab=${selectedScreen}`,
+      status: 'pending' as const,
+      createdAt: Date.now(),
+      completed: false
+    };
+
+    await saveScheduledReminder(testReminder);
+    if (soundEnabled) playSuccessChime();
+    onToast(
+      `⏰ Server Reminder Scheduled for ${timeStr}`,
+      `CLOSE CHROME NOW! In ${minutes} minute${minutes > 1 ? 's' : ''}, the server background scheduler will fire Web Push to your Android notification tray.`,
+      'success'
+    );
   };
 
   const handleCopyKey = () => {
@@ -408,6 +451,32 @@ export const PushNotificationModal: React.FC<PushNotificationModalProps> = ({
                     <Bell className="w-3.5 h-3.5 text-slate-600" />
                     <span>Instant Alert</span>
                   </button>
+                </div>
+
+                {/* Persistent Server Scheduler Test (Requirement 16) */}
+                <div className="pt-2 border-t border-indigo-200/80">
+                  <div className="text-[11px] font-bold text-indigo-950 mb-1.5 flex items-center gap-1">
+                    <span>⚡ Real Server Scheduler Test (1–2 min in future):</span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => handleScheduleServerTest(1)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 text-indigo-950 font-bold text-xs transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+                    >
+                      <span>⏱️ Test in 1 Minute</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleScheduleServerTest(2)}
+                      className="flex-1 py-2 px-3 rounded-xl bg-white hover:bg-indigo-50 border border-indigo-300 text-indigo-950 font-bold text-xs transition-all shadow-2xs cursor-pointer flex items-center justify-center gap-1.5 active:scale-98"
+                    >
+                      <span>⏱️ Test in 2 Minutes</span>
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-indigo-700/80 mt-1 leading-tight">
+                    Saves to server backend. You can close Chrome or lock your phone. The server triggers the push when the time arrives!
+                  </p>
                 </div>
               </div>
 

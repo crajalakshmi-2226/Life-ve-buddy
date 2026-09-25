@@ -10,10 +10,15 @@ import {
   CheckCircle2, 
   AlertCircle,
   Sparkles,
-  ListTodo
+  ListTodo,
+  Repeat,
+  Globe,
+  Zap,
+  ArrowRight
 } from 'lucide-react';
 import { QuickReminder } from '../types';
 import { playSuccessChime, playAlertChime } from '../utils/audio';
+import { getUserTimezone } from '../utils/reminderSync';
 
 interface AddReminderModalProps {
   isOpen: boolean;
@@ -43,8 +48,12 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [remindMeAt, setRemindMeAt] = useState('');
+  const [recurrence, setRecurrence] = useState<'none' | 'daily' | 'weekdays' | 'weekly' | 'hourly'>('none');
+  const [targetUrl, setTargetUrl] = useState<string>('/?tab=reminders');
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [viewTab, setViewTab] = useState<'create' | 'list'>('create');
+
+  const userTimezone = getUserTimezone();
 
   // Initialize or reset form
   useEffect(() => {
@@ -54,6 +63,8 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
       setDate(initialEditReminder.date);
       setTime(initialEditReminder.time);
       setRemindMeAt(initialEditReminder.remindMeAt);
+      setRecurrence(initialEditReminder.recurrence || 'none');
+      setTargetUrl(initialEditReminder.targetUrl || '/?tab=reminders');
       setViewTab('create');
     } else {
       resetForm();
@@ -78,7 +89,37 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
     setDate(todayStr);
     setTime(defaultTime);
     setRemindMeAt(`${remindDateStr}T${remindHours}:${remindMins}`);
+    setRecurrence('none');
+    setTargetUrl('/?tab=reminders');
     setErrorMsg(null);
+  };
+
+  // Preset button helper (1 min or 2 mins for quick background testing)
+  const setTestPreset = (minutesAhead: number) => {
+    const future = new Date(Date.now() + minutesAhead * 60 * 1000);
+    const year = future.getFullYear();
+    const month = String(future.getMonth() + 1).padStart(2, '0');
+    const day = String(future.getDate()).padStart(2, '0');
+    const hours = String(future.getHours()).padStart(2, '0');
+    const mins = String(future.getMinutes()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    const timeStr = `${hours}:${mins}`;
+    const datetimeLocal = `${dateStr}T${timeStr}`;
+
+    if (!subject.trim()) {
+      setSubject(`Quick Test Reminder (${minutesAhead}m)`);
+    }
+    setDate(dateStr);
+    setTime(timeStr);
+    setRemindMeAt(datetimeLocal);
+    setErrorMsg(null);
+
+    if (soundEnabled) playSuccessChime();
+    onToast(
+      `⚡ Preset Set (+${minutesAhead}m)`,
+      `Scheduled for ${timeStr}. Save, then close Chrome to test background push!`,
+      'info'
+    );
   };
 
   if (!isOpen) return null;
@@ -109,12 +150,24 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
       return;
     }
 
+    const scheduledEpoch = new Date(remindMeAt).getTime();
+    if (isNaN(scheduledEpoch)) {
+      setErrorMsg('Invalid scheduled date/time.');
+      if (soundEnabled) playAlertChime();
+      return;
+    }
+
     const newReminder: QuickReminder = {
       id: editingId || `rem_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       subject: subject.trim(),
       date,
       time,
       remindMeAt,
+      scheduledTime: scheduledEpoch,
+      timezone: userTimezone,
+      recurrence,
+      targetUrl,
+      status: 'pending',
       createdAt: editingId ? (reminders.find(r => r.id === editingId)?.createdAt || Date.now()) : Date.now(),
       completed: false,
       notified: false
@@ -123,8 +176,8 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
     onSaveReminder(newReminder);
     if (soundEnabled) playSuccessChime();
     onToast(
-      editingId ? 'Reminder Updated' : 'Reminder Saved',
-      `"${newReminder.subject}" scheduled for ${date} at ${time}. Alert set for ${remindMeAt.replace('T', ' ')}.`,
+      editingId ? 'Reminder Updated' : 'Server Reminder Scheduled',
+      `"${newReminder.subject}" scheduled on server for ${date} at ${time}. Background push will trigger automatically.`,
       'success'
     );
 
@@ -142,12 +195,14 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
     setDate(rem.date);
     setTime(rem.time);
     setRemindMeAt(rem.remindMeAt);
+    setRecurrence(rem.recurrence || 'none');
+    setTargetUrl(rem.targetUrl || '/?tab=reminders');
     setViewTab('create');
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-fadeIn">
-      <div className="bg-white rounded-3xl w-full max-w-lg p-5 sm:p-7 shadow-2xl border border-purple-200/90 relative max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-3xl w-full max-w-lg p-5 sm:p-7 shadow-2xl border border-purple-200/90 relative max-h-[92vh] flex flex-col overflow-hidden animate-scaleUp">
         
         {/* Modal Header */}
         <div className="flex items-center justify-between pb-4 border-b border-purple-100">
@@ -159,11 +214,16 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
               <Bell className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-base sm:text-lg font-bold font-classic text-purple-950">
-                {editingId ? 'Edit Quick Reminder' : 'Quick Reminders & Tasks'}
-              </h3>
+              <div className="flex items-center gap-2">
+                <h3 className="text-base sm:text-lg font-bold font-classic text-purple-950">
+                  {editingId ? 'Edit Scheduled Reminder' : 'Background Scheduled Reminders'}
+                </h3>
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200">
+                  Server Push
+                </span>
+              </div>
               <p className="text-xs text-purple-700/80 font-medium">
-                Set custom alerts for submissions, classes & self-study
+                Pushes to Android notification panel even when Chrome is closed
               </p>
             </div>
           </div>
@@ -196,7 +256,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
             }`}
           >
             <Plus className="w-3.5 h-3.5" />
-            <span>{editingId ? 'Edit Reminder' : 'New Reminder'}</span>
+            <span>{editingId ? 'Edit Reminder' : 'Schedule New'}</span>
           </button>
 
           <button
@@ -228,6 +288,42 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                 </div>
               )}
 
+              {/* Quick Testing Presets Bar (Requirement 16) */}
+              <div className="p-3 rounded-2xl bg-gradient-to-r from-purple-50 via-indigo-50 to-purple-50 border border-purple-200/80 space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-purple-950 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                    <span>Quick Test: Background Push (When App is Closed)</span>
+                  </span>
+                  <span className="text-[10px] text-purple-600 font-medium">Click & Save</span>
+                </div>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    onClick={() => setTestPreset(1)}
+                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-purple-100/80 text-purple-900 border border-purple-300 text-xs font-bold shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>⚡ In 1 Minute</span>
+                    <span className="text-[10px] text-purple-500 font-normal">(+60s)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestPreset(2)}
+                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-purple-100/80 text-purple-900 border border-purple-300 text-xs font-bold shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>⚡ In 2 Minutes</span>
+                    <span className="text-[10px] text-purple-500 font-normal">(+120s)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTestPreset(5)}
+                    className="flex-1 py-1.5 px-2.5 rounded-xl bg-white hover:bg-purple-100/80 text-purple-900 border border-purple-300 text-xs font-bold shadow-2xs transition-all active:scale-95 flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    <span>In 5 Mins</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Subject */}
               <div>
                 <label className="block text-xs font-bold text-purple-950 mb-1.5">
@@ -237,7 +333,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   type="text"
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="e.g. Submit DSP Lab Report, Review Physics Formulas..."
+                  placeholder="e.g. DSP Lab Submission, ML Unit Test, Physics Quiz..."
                   className="w-full px-3.5 py-2.5 rounded-xl border border-purple-200 bg-purple-50/40 text-xs font-medium text-purple-950 focus:outline-hidden focus:ring-2 focus:ring-purple-400"
                   autoFocus
                 />
@@ -278,7 +374,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
               <div>
                 <label className="block text-xs font-bold text-purple-950 mb-1.5 flex items-center gap-1">
                   <Bell className="w-3.5 h-3.5 text-purple-600" />
-                  <span>Remind Me At (Date & Time) <span className="text-rose-500">*</span></span>
+                  <span>Remind Me At (Exact Alert Timestamp) <span className="text-rose-500">*</span></span>
                 </label>
                 <input
                   type="datetime-local"
@@ -286,9 +382,55 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   onChange={(e) => setRemindMeAt(e.target.value)}
                   className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/40 text-xs font-medium text-purple-950 focus:outline-hidden focus:ring-2 focus:ring-purple-400"
                 />
-                <p className="text-[11px] text-purple-600/80 mt-1">
-                  LifeBuddy will fire a notification alert at this exact timestamp.
-                </p>
+                <div className="flex items-center justify-between text-[11px] text-purple-700/80 mt-1">
+                  <span className="flex items-center gap-1">
+                    <Globe className="w-3 h-3 text-purple-500" />
+                    <span>Timezone: <strong>{userTimezone}</strong></span>
+                  </span>
+                  <span>Server-side scheduler</span>
+                </div>
+              </div>
+
+              {/* Recurrence & Deep-Link Destination Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Recurrence */}
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1.5 flex items-center gap-1">
+                    <Repeat className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Repeat / Recurrence</span>
+                  </label>
+                  <select
+                    value={recurrence}
+                    onChange={(e) => setRecurrence(e.target.value as any)}
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/40 text-xs font-medium text-purple-950 focus:outline-hidden focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                  >
+                    <option value="none">One-time alert (No repeat)</option>
+                    <option value="daily">Daily (Every day at this time)</option>
+                    <option value="weekdays">Weekdays (Mon - Fri)</option>
+                    <option value="weekly">Weekly (Once per week)</option>
+                    <option value="hourly">Hourly (Every hour)</option>
+                  </select>
+                </div>
+
+                {/* Target App Page on Click */}
+                <div>
+                  <label className="block text-xs font-bold text-purple-950 mb-1.5 flex items-center gap-1">
+                    <ArrowRight className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Open on Tap</span>
+                  </label>
+                  <select
+                    value={targetUrl}
+                    onChange={(e) => setTargetUrl(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-purple-200 bg-purple-50/40 text-xs font-medium text-purple-950 focus:outline-hidden focus:ring-2 focus:ring-purple-400 cursor-pointer"
+                  >
+                    <option value="/?tab=reminders">Saved Reminders List</option>
+                    <option value="/?tab=labs">🧪 Lab Tracker</option>
+                    <option value="/?tab=schedule">📅 Class Timetable</option>
+                    <option value="/?tab=exams">🎓 Exam Schedules</option>
+                    <option value="/?tab=habits">⚡ Daily Habits</option>
+                    <option value="/?tab=stretch">🧘 Body Stretch Relief</option>
+                  </select>
+                </div>
               </div>
 
               {/* Action Buttons */}
@@ -318,7 +460,7 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   className="px-5 py-2.5 rounded-xl text-xs font-bold shadow-md hover:opacity-90 active:scale-95 transition-all cursor-pointer flex items-center gap-1.5"
                 >
                   <CheckCircle2 className="w-4 h-4" />
-                  <span>{editingId ? 'Update Reminder' : 'Save Reminder'}</span>
+                  <span>{editingId ? 'Update Schedule' : 'Schedule Reminder'}</span>
                 </button>
               </div>
             </form>
@@ -329,12 +471,14 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                   <Bell className="w-8 h-8 text-purple-400 mx-auto" />
                   <h4 className="text-sm font-bold text-purple-950">No Active Reminders</h4>
                   <p className="text-xs text-purple-700/80 max-w-xs mx-auto">
-                    Click "New Reminder" above to set your first quick reminder with custom notification alert time.
+                    Click "Schedule New" above or use the quick test preset (+1m) to schedule your first background push.
                   </p>
                 </div>
               ) : (
                 reminders.map(rem => {
-                  const isPast = new Date(rem.remindMeAt).getTime() < Date.now();
+                  const scheduledTime = rem.scheduledTime || (rem.remindMeAt ? new Date(rem.remindMeAt).getTime() : 0);
+                  const isPast = scheduledTime ? scheduledTime < Date.now() : false;
+                  
                   return (
                     <div
                       key={rem.id}
@@ -353,9 +497,21 @@ export const AddReminderModal: React.FC<AddReminderModalProps> = ({
                           <CheckCircle2 className={`w-4 h-4 ${rem.completed ? 'text-emerald-600 fill-emerald-100' : 'text-purple-300'}`} />
                         </button>
                         <div>
-                          <h4 className={`text-xs font-bold ${rem.completed ? 'line-through text-purple-950/60' : 'text-purple-950'}`}>
-                            {rem.subject}
-                          </h4>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className={`text-xs font-bold ${rem.completed ? 'line-through text-purple-950/60' : 'text-purple-950'}`}>
+                              {rem.subject}
+                            </h4>
+                            {rem.recurrence && rem.recurrence !== 'none' && (
+                              <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-indigo-100 text-indigo-800 flex items-center gap-1">
+                                <Repeat className="w-2.5 h-2.5" />
+                                <span className="capitalize">{rem.recurrence}</span>
+                              </span>
+                            )}
+                            <span className="px-1.5 py-0.2 rounded-md text-[9px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              Server Scheduled
+                            </span>
+                          </div>
+
                           <div className="flex items-center gap-2 mt-1 flex-wrap text-[11px] text-purple-700">
                             <span className="flex items-center gap-1">
                               <Calendar className="w-3 h-3 text-purple-500" />

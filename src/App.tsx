@@ -27,6 +27,13 @@ import { OfflineIndicator } from './components/OfflineIndicator';
 import { PushNotificationModal } from './components/PushNotificationModal';
 import { subscribeToPushNotifications, triggerBackgroundPush } from './utils/pushManager';
 import { 
+  fetchServerReminders, 
+  saveScheduledReminder, 
+  deleteScheduledReminder, 
+  toggleCompleteScheduledReminder, 
+  syncAllWithServer 
+} from './utils/reminderSync';
+import { 
   TodayData, 
   LabData, 
   ProjectData, 
@@ -351,12 +358,39 @@ export default function App() {
     localStorage.setItem('custom_theme_color', customThemeColor);
   }, [customThemeColor]);
 
-  // Persist quick reminders
+  // Persist quick reminders locally and sync with server
   useEffect(() => {
     localStorage.setItem('quickReminders', JSON.stringify(quickReminders));
   }, [quickReminders]);
 
-  // Background reminder notification checker
+  // Load and sync reminders with server-side scheduler on mount
+  useEffect(() => {
+    fetchServerReminders().then(serverReminders => {
+      if (serverReminders && serverReminders.length > 0) {
+        setQuickReminders(prev => {
+          const map = new Map<string, QuickReminder>();
+          prev.forEach(r => map.set(r.id, r));
+          serverReminders.forEach(r => {
+            const existing = map.get(r.id);
+            map.set(r.id, existing ? { ...existing, ...r } : r);
+          });
+          return Array.from(map.values());
+        });
+      } else {
+        const saved = localStorage.getItem("quickReminders");
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed) && parsed.length > 0) {
+              syncAllWithServer(parsed).catch(() => {});
+            }
+          } catch (_e) {}
+        }
+      }
+    }).catch(err => console.warn('Reminders fetch notice:', err));
+  }, []);
+
+  // In-app visual notification banner (only shows in-app toast if user is actively in the tab)
   useEffect(() => {
     const checkReminders = () => {
       const now = Date.now();
@@ -364,16 +398,13 @@ export default function App() {
         let hasChanges = false;
         const updated = prevReminders.map(rem => {
           if (!rem.completed && !rem.notified && rem.remindMeAt) {
-            const reminderTime = new Date(rem.remindMeAt).getTime();
+            const reminderTime = rem.scheduledTime || new Date(rem.remindMeAt).getTime();
             if (!isNaN(reminderTime) && reminderTime <= now) {
               hasChanges = true;
-              sendSystemNotification({
-                title: `🔔 Reminder: ${rem.subject}`,
-                body: `Scheduled for ${rem.date} at ${rem.time}`,
-                soundEnabled
-              });
-              showToast(`🔔 Reminder: ${rem.subject}`, `Scheduled for ${rem.date} at ${rem.time}`, 'alert');
-              if (soundEnabled) playSuccessChime();
+              if (document.visibilityState === 'visible') {
+                showToast(`🔔 Reminder: ${rem.subject}`, `Scheduled for ${rem.date} at ${rem.time}`, 'alert');
+                if (soundEnabled) playSuccessChime();
+              }
               return { ...rem, notified: true };
             }
           }
@@ -388,7 +419,8 @@ export default function App() {
     return () => clearInterval(timer);
   }, [soundEnabled, showToast]);
 
-  const handleSaveReminder = (reminder: QuickReminder) => {
+  const handleSaveReminder = async (reminder: QuickReminder) => {
+    // 1. Optimistic UI update
     setQuickReminders(prev => {
       const exists = prev.some(r => r.id === reminder.id);
       if (exists) {
@@ -403,15 +435,33 @@ export default function App() {
       'Active',
       `Scheduled for ${reminder.date} at ${reminder.time} (Alert: ${reminder.remindMeAt.replace('T', ' ')})`
     );
+
+    // 2. Ensure device is subscribed to Web Push so Android system panel wakes up
+    if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+      try {
+        await subscribeToPushNotifications();
+      } catch (_e) {}
+    }
+
+    // 3. Save to server-side persistent scheduler
+    try {
+      const res = await saveScheduledReminder(reminder);
+      if (res.success && res.reminder) {
+        setQuickReminders(prev => prev.map(r => r.id === reminder.id ? { ...r, ...res.reminder } : r));
+      }
+    } catch (err) {
+      console.warn('Server reminder scheduling notice:', err);
+    }
   };
 
   const handleDeleteReminder = (id: string) => {
     const rem = quickReminders.find(r => r.id === id);
     setQuickReminders(prev => prev.filter(r => r.id !== id));
+    deleteScheduledReminder(id).catch(e => console.warn(e));
     if (rem) {
       logHistoryRecord(`Reminder Removed: ${rem.subject}`, 'Reminders', 'Deleted');
     }
-    showToast("Reminder Deleted", "Scheduled reminder removed.", "info");
+    showToast("Reminder Deleted", "Scheduled reminder removed from server.", "info");
   };
 
   const handleToggleReminderComplete = (id: string) => {
@@ -419,6 +469,7 @@ export default function App() {
       return prev.map(r => {
         if (r.id === id) {
           const next = !r.completed;
+          toggleCompleteScheduledReminder(id, next).catch(e => console.warn(e));
           if (next) {
             logHistoryRecord(
               `Reminder Done: ${r.subject}`,
@@ -565,6 +616,10 @@ export default function App() {
     }
 
     // Modals
+    if (tabParam === 'reminders') {
+      setIsReminderModalOpen(true);
+      return;
+    }
     if (tabParam === 'stretch') {
       setIsStretchOpen(true);
       return;

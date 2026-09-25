@@ -573,9 +573,15 @@ export interface QuickReminder {
   date: string; // YYYY-MM-DD
   time: string; // HH:mm
   remindMeAt: string; // YYYY-MM-DDTHH:mm
+  scheduledTime?: number; // UTC Epoch timestamp in milliseconds
+  timezone?: string; // User local timezone
+  recurrence?: 'none' | 'daily' | 'weekdays' | 'weekly' | 'hourly';
+  targetUrl?: string; // Screen to open when tapped
+  status?: 'pending' | 'sent' | 'completed' | 'cancelled';
   createdAt: number;
   completed?: boolean;
   notified?: boolean;
+  notifiedAt?: number;
 }
 
 
