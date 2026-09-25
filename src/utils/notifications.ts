@@ -1,10 +1,11 @@
 /**
  * LifeBuddy Unified System-Level Notification Engine
- * Integrates Web Notification API + Service Worker + Audio & Vibration
+ * Integrates Web Notification API + Service Worker + Web Push API + Audio & Vibration
  * Ensures reminders appear on the phone tray / lock screen even when app is in background/closed.
  */
 
 import { playAlertChime } from './audio';
+import { triggerBackgroundPush } from './pushManager';
 
 export interface SystemNotificationOptions {
   title: string;
@@ -16,6 +17,7 @@ export interface SystemNotificationOptions {
   requireInteraction?: boolean;
   data?: Record<string, any>;
   soundEnabled?: boolean;
+  actions?: { action: string; title: string }[];
 }
 
 /**
@@ -46,11 +48,15 @@ export async function requestSystemNotificationPermission(): Promise<'granted' |
 }
 
 /**
- * Send real system-level notification via Service Worker or Web Notification API
+ * Send real system-level notification via Service Worker (Android Chrome compliant)
+ * Always prioritizes ServiceWorkerRegistration.showNotification() to work on Android.
  */
 export async function sendSystemNotification(options: SystemNotificationOptions): Promise<boolean> {
   const permission = getNotificationPermission();
-  
+  if (permission !== 'granted') {
+    return false;
+  }
+
   // Play sound if enabled
   if (options.soundEnabled !== false) {
     try {
@@ -63,22 +69,18 @@ export async function sendSystemNotification(options: SystemNotificationOptions)
   // Device vibration if supported
   if (typeof navigator !== 'undefined' && 'vibrate' in navigator) {
     try {
-      navigator.vibrate(options.vibrate || [200, 100, 200]);
+      navigator.vibrate(options.vibrate || [200, 100, 200, 100, 200]);
     } catch (e) {
       console.debug('Vibrate error:', e);
     }
-  }
-
-  if (permission !== 'granted') {
-    return false;
   }
 
   const defaultIcon = options.icon || '/pwa-192x192.png';
   const defaultBadge = options.badge || '/pwa-192x192.png';
   const tag = options.tag || `lifebuddy-${Date.now()}`;
 
-  // 1. Try Service Worker registration first (works in background & lock screen)
-  if ('serviceWorker' in navigator) {
+  // 1. Mandatory on Android Chrome: Service Worker registration showNotification
+  if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
     try {
       const reg = await navigator.serviceWorker.ready;
       if (reg && 'showNotification' in reg) {
@@ -87,30 +89,53 @@ export async function sendSystemNotification(options: SystemNotificationOptions)
           icon: defaultIcon,
           badge: defaultBadge,
           tag,
-          vibrate: options.vibrate || [200, 100, 200],
+          vibrate: options.vibrate || [200, 100, 200, 100, 200],
           data: options.data || { url: '/' },
-          renotify: true
-        });
+          renotify: true,
+          requireInteraction: options.requireInteraction || false,
+          actions: options.actions || [
+            { action: 'open', title: 'Open LifeBuddy' },
+            { action: 'dismiss', title: 'Dismiss' }
+          ]
+        } as any);
         return true;
       }
     } catch (swErr) {
-      console.warn('Service worker showNotification fallback:', swErr);
+      console.warn('Service worker showNotification notice:', swErr);
     }
   }
 
-  // 2. Fallback to standard window Notification
+  // 2. Desktop fallback (note: Chrome on Android explicitly forbids `new Notification()` in window context)
   try {
-    new Notification(options.title, {
-      body: options.body,
-      icon: defaultIcon,
-      tag,
-      badge: defaultBadge
-    });
-    return true;
+    if (typeof window !== 'undefined' && 'Notification' in window) {
+      new Notification(options.title, {
+        body: options.body,
+        icon: defaultIcon,
+        tag,
+        badge: defaultBadge
+      });
+      return true;
+    }
   } catch (winErr) {
-    console.warn('Window Notification failed:', winErr);
-    return false;
+    console.debug('Window Notification fallback skipped (expected on Android Chrome):', winErr);
   }
+
+  return false;
+}
+
+/**
+ * Dispatch background push notification via Server Web Push API
+ * This wakes up Android Chrome even when closed or in background!
+ */
+export async function dispatchBackgroundPushAlert(options: {
+  title: string;
+  body: string;
+  url?: string;
+  tag?: string;
+  delaySeconds?: number;
+}): Promise<boolean> {
+  const result = await triggerBackgroundPush(options);
+  return result.success;
 }
 
 /**

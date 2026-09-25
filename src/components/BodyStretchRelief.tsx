@@ -22,6 +22,7 @@ import {
 } from 'lucide-react';
 import { StretchExercise, PhysicalActivityReminder, PhysicalActivityType } from '../types';
 import { playSuccessChime, playAlertChime } from '../utils/audio';
+import { sendSystemNotification } from '../utils/notifications';
 
 interface BodyStretchReliefProps {
   isOpen: boolean;
@@ -206,17 +207,15 @@ export const BodyStretchRelief: React.FC<BodyStretchReliefProps> = ({
           setTriggeredAlert(rem);
           if (soundEnabled) playAlertChime();
 
-          // Try browser notification
-          if ('Notification' in window && Notification.permission === 'granted') {
-            try {
-              new Notification(`${rem.icon} ${rem.title}`, {
-                body: rem.customMessage || `Time for your recurring ${rem.title}! Repeating every ${rem.intervalMinutes}m.`,
-                icon: '/app-logo.jpg'
-              });
-            } catch (err) {
-              console.debug('Notification trigger error', err);
-            }
-          }
+          // Send system-level notification via Service Worker
+          sendSystemNotification({
+            title: `${rem.icon} ${rem.title}`,
+            body: rem.customMessage || `Time for your recurring ${rem.title}! Repeating every ${rem.intervalMinutes}m.`,
+            icon: '/pwa-192x192.png',
+            tag: `stretch-${rem.id}`,
+            data: { url: '/?tab=stretch' },
+            soundEnabled: false // already chimed above
+          });
 
           // REPEAT: Schedule next interval automatically so it keeps repeating all day!
           return {

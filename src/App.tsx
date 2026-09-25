@@ -24,6 +24,8 @@ import { HistoryPage } from './components/HistoryPage';
 import { AboutMePage } from './components/AboutMePage';
 import { InstitutionAttendanceTracker } from './components/InstitutionAttendanceTracker';
 import { OfflineIndicator } from './components/OfflineIndicator';
+import { PushNotificationModal } from './components/PushNotificationModal';
+import { subscribeToPushNotifications, triggerBackgroundPush } from './utils/pushManager';
 import { 
   TodayData, 
   LabData, 
@@ -72,6 +74,9 @@ export default function App() {
   const attendanceSectionRef = useRef<HTMLDivElement>(null);
   const habitsSectionRef = useRef<HTMLDivElement>(null);
   const complaintsSectionRef = useRef<HTMLDivElement>(null);
+  const labsSectionRef = useRef<HTMLDivElement>(null);
+
+  const [isPushModalOpen, setIsPushModalOpen] = useState(false);
 
   // Clean up any deactivated alert states
   useEffect(() => {
@@ -512,14 +517,115 @@ export default function App() {
       .finally(() => setLoadingQuote(false));
   }, []);
 
-  // Check notification permission support
+  // Check notification permission support & sync push subscription
   useEffect(() => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       setNotifPermission(Notification.permission);
+      if (Notification.permission === 'granted') {
+        subscribeToPushNotifications().catch(() => {});
+      }
     } else {
       setNotifPermission('unsupported');
     }
   }, []);
+
+  // Deep linking and Service Worker notification click navigation
+  const handleNavigateToDestination = useCallback((targetUrlOrSearch: string) => {
+    if (!targetUrlOrSearch) return;
+
+    let tabParam = '';
+    try {
+      if (targetUrlOrSearch.includes('?')) {
+        const query = targetUrlOrSearch.split('?')[1];
+        const params = new URLSearchParams(query);
+        tabParam = params.get('tab') || '';
+      } else if (targetUrlOrSearch.startsWith('/')) {
+        tabParam = targetUrlOrSearch.replace('/', '').replace('?tab=', '');
+      } else {
+        tabParam = targetUrlOrSearch;
+      }
+    } catch (_e) {
+      tabParam = targetUrlOrSearch;
+    }
+
+    if (!tabParam) return;
+
+    // Full page views
+    if (tabParam === 'holidays') {
+      setActiveTab('holidays');
+      return;
+    }
+    if (tabParam === 'history') {
+      setActiveTab('history');
+      return;
+    }
+    if (tabParam === 'aboutme') {
+      setActiveTab('aboutme');
+      return;
+    }
+
+    // Modals
+    if (tabParam === 'stretch') {
+      setIsStretchOpen(true);
+      return;
+    }
+    if (tabParam === 'timer') {
+      setIsTimerOpen(true);
+      return;
+    }
+    if (tabParam === 'birthday') {
+      setIsBirthdayModalOpen(true);
+      return;
+    }
+
+    // Dashboard sections
+    setActiveTab('dashboard');
+    setTimeout(() => {
+      switch (tabParam) {
+        case 'labs':
+          labsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'schedule':
+          scheduleSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'exams':
+          examSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'attendance':
+          attendanceSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'habits':
+          habitsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+        case 'complaints':
+          complaintsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          break;
+      }
+    }, 150);
+  }, []);
+
+  // Listen for initial URL search query on app launch
+  useEffect(() => {
+    if (typeof window !== 'undefined' && window.location.search) {
+      handleNavigateToDestination(window.location.search);
+    }
+  }, [handleNavigateToDestination]);
+
+  // Listen for Service Worker click navigation message
+  useEffect(() => {
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    const onSWMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === 'NOTIFICATION_NAVIGATE') {
+        handleNavigateToDestination(event.data.url);
+      }
+    };
+
+    navigator.serviceWorker.addEventListener('message', onSWMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onSWMessage);
+    };
+  }, [handleNavigateToDestination]);
 
   // Save changes to localStorage
   useEffect(() => {
@@ -635,36 +741,65 @@ export default function App() {
       .finally(() => setLoadingQuote(false));
   };
 
-  // Request browser notification
+  // Request browser notification and subscribe to background Web Push
   const handleRequestNotification = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window) {
       try {
-        const perm = await Notification.requestPermission();
+        const subResult = await subscribeToPushNotifications();
+        const perm = Notification.permission;
         setNotifPermission(perm);
         if (perm === 'granted') {
-          showToast("🔔 Reminders Enabled!", "You will receive timely alerts for class periods, lab sessions and project milestones.", "success");
+          showToast("🔔 Background Push Enabled!", "You will receive system-level alerts even when Chrome is in the background or closed.", "success");
           if (soundEnabled) playSuccessChime();
-          new Notification("✨ LifeBuddy Active", {
-            body: "Study, Class & Lab Reminders are now configured!",
-            icon: "✨"
+          sendSystemNotification({
+            title: "✨ LifeBuddy Active",
+            body: "Study, Class & Lab Reminders are now connected to Android push notifications!",
+            icon: "/pwa-192x192.png",
+            tag: "lifebuddy-active",
+            data: { url: "/?tab=schedule" },
+            soundEnabled: false
           });
+        } else if (perm === 'denied') {
+          showToast("⚠️ Permission Blocked", "Chrome blocked notifications. Tap 'Settings' on the banner for Android unblock steps.", "alert");
         }
-      } catch (e) {
+      } catch (e: any) {
         console.warn("Notification permission error", e);
+        showToast("Notice", e.message || "Permission error", "alert");
       }
     } else {
       showToast("🔔 Reminders Enabled (In-App)", "In-app banner notifications are active.", "info");
     }
   };
 
-  const handleTestNotification = () => {
+  const handleTestNotification = async () => {
     if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
-      new Notification("🧪 Class & Lab Alert Test", {
-        body: "Your next period is coming up soon. Check your timetable!",
-        icon: "📅"
+      await sendSystemNotification({
+        title: "🧪 Class & Lab Alert Test",
+        body: "Your next period is coming up soon. Tap to view your timetable!",
+        icon: "/pwa-192x192.png",
+        tag: `timetable-test-${Date.now()}`,
+        data: { url: "/?tab=schedule" },
+        soundEnabled
       });
+      showToast("📅 Timetable Alert", "Class schedule reminder dispatched to Android notification panel!", "info");
+    } else {
+      setIsPushModalOpen(true);
     }
-    showToast("📅 Timetable Alert", "Class schedule reminder test sent successfully!", "info");
+  };
+
+  const handleDelayedPush = async (seconds: number = 10) => {
+    showToast(
+      `⏳ Background Push Scheduled (${seconds}s)`,
+      "CLOSE CHROME NOW or switch apps! The alert will ring in Android's notification drawer.",
+      "info"
+    );
+    await triggerBackgroundPush({
+      title: "🔔 LifeBuddy Background Alert",
+      body: "Delivered while Chrome was in the background or closed!",
+      url: "/?tab=labs",
+      tag: `bg-alert-${Date.now()}`,
+      delaySeconds: seconds
+    });
   };
 
   // Habit toggling
@@ -769,6 +904,7 @@ export default function App() {
           upcomingExamsCount={upcomingExamsCount}
           upcomingHolidaysCount={upcomingHolidaysCount}
           totalStreak={totalStreak}
+          onOpenPushSettings={() => setIsPushModalOpen(true)}
         />
 
         {/* Browser Notification Banner */}
@@ -779,6 +915,8 @@ export default function App() {
           onDismiss={() => setNotifDismissed(true)}
           soundEnabled={soundEnabled}
           onSendTestNotification={handleTestNotification}
+          onOpenPushSettings={() => setIsPushModalOpen(true)}
+          onSendDelayedTest={handleDelayedPush}
         />
 
         {/* Main Content Area */}
@@ -952,7 +1090,7 @@ export default function App() {
               </div>
 
               {/* SECTION 6: Lab & Project Tracker */}
-              <section className="bg-white rounded-3xl p-5 sm:p-7 border border-purple-200/90 shadow-sm transition-all space-y-5">
+              <section ref={labsSectionRef} className="bg-white rounded-3xl p-5 sm:p-7 border border-purple-200/90 shadow-sm transition-all space-y-5">
                 <div className="flex items-center justify-between border-b border-purple-100 pb-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-2xl bg-purple-100 text-purple-700 flex items-center justify-center font-bold text-xl shadow-xs border border-purple-200">
@@ -1125,6 +1263,15 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {/* Android Background Push Notification Modal & Settings */}
+        <PushNotificationModal
+          isOpen={isPushModalOpen}
+          onClose={() => setIsPushModalOpen(false)}
+          onToast={showToast}
+          soundEnabled={soundEnabled}
+          onNavigateToTab={handleNavigateToDestination}
+        />
 
         {/* Network Offline Indicator */}
         <OfflineIndicator />

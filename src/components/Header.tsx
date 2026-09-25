@@ -43,6 +43,7 @@ interface HeaderProps {
   upcomingExamsCount?: number;
   upcomingHolidaysCount?: number;
   totalStreak: number;
+  onOpenPushSettings?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -65,7 +66,8 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenHolidays,
   upcomingExamsCount = 0,
   upcomingHolidaysCount = 0,
-  totalStreak
+  totalStreak,
+  onOpenPushSettings
 }) => {
   const currentDate = formatHeaderDate();
   const [isEditingName, setIsEditingName] = useState(false);
@@ -327,6 +329,19 @@ export const Header: React.FC<HeaderProps> = ({
             <Timer className="w-3.5 h-3.5 text-purple-700" />
             <span className="hidden lg:inline">Timer</span>
           </button>
+
+          {/* Android Background Push Notifications launcher */}
+          {onOpenPushSettings && (
+            <button
+              type="button"
+              onClick={onOpenPushSettings}
+              title="Android Background Push Notifications & Diagnostics"
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-semibold text-purple-900 hover:text-purple-950 bg-purple-100/70 hover:bg-purple-200/80 border border-purple-300 transition-colors shadow-2xs cursor-pointer active:scale-95"
+            >
+              <Bell className="w-3.5 h-3.5 text-purple-700" />
+              <span className="hidden sm:inline">Push Alerts</span>
+            </button>
+          )}
 
           {/* PWA In-App Install App Button */}
           <PWAInstallButton variant="header" />

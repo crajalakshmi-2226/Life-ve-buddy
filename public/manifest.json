@@ -10,6 +10,7 @@
   "background_color": "#faf5ff",
   "theme_color": "#581c87",
   "categories": ["education", "productivity", "lifestyle"],
+  "gcm_sender_id": "103953800507",
   "icons": [
     {
       "src": "/pwa-192x192.png",

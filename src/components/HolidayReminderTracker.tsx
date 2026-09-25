@@ -26,6 +26,7 @@ import {
   Tag
 } from 'lucide-react';
 import { HolidayItem, HolidayCategory, HolidayCountdownInfo } from '../types';
+import { sendSystemNotification } from '../utils/notifications';
 import { 
   formatHolidayDate, 
   getHolidayCountdown, 
@@ -181,17 +182,14 @@ export const HolidayReminderTracker: React.FC<HolidayReminderTrackerProps> = ({
 
     onToast(`🌴 ${h.name} Reminder`, message, 'success');
 
-    // Trigger browser notification if supported and granted
-    if ('Notification' in window && Notification.permission === 'granted') {
-      try {
-        new Notification(`🌴 LifeBuddy Holiday Reminder: ${h.name}`, {
-          body: message,
-          icon: '/icon-192.png'
-        });
-      } catch (e) {
-        console.debug('Push notification error', e);
-      }
-    }
+    // Trigger system notification via Service Worker
+    sendSystemNotification({
+      title: `🌴 LifeBuddy Holiday Reminder: ${h.name}`,
+      body: message,
+      icon: '/pwa-192x192.png',
+      tag: `holiday-${h.id}`,
+      data: { url: '/?tab=holidays' }
+    });
   };
 
   // Open Edit Modal
